@@ -408,8 +408,8 @@ class EnrollmentEngine(
                     enrollmentOrder.forEach { pose ->
                         capturedPhotos[pose]?.let { put(pose, it) }
                     }
-                    profilePhotoJpeg?.let { put(FacePose.CENTER, it) }
-                }
+                },
+                profilePhotoJpeg = profilePhotoJpeg
             )
             _uiState.value = _uiState.value.copy(
                 instruction = "Registration complete",

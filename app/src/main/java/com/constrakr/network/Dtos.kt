@@ -211,3 +211,10 @@ data class FaceEnrollmentPhotoPostRequest(
     @Json(name = "pose") val pose: String,
     @Json(name = "jpeg_base64") val jpegBase64: String
 )
+
+@JsonClass(generateAdapter = true)
+data class EmployeeProfilePhotoPostRequest(
+    @Json(name = "employee_local_id") val employeeLocalId: UUID,
+    @Json(name = "employee_server_id") val employeeServerId: String?,
+    @Json(name = "jpeg_base64") val jpegBase64: String
+)

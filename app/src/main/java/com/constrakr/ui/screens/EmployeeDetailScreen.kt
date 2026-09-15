@@ -63,7 +63,7 @@ fun EmployeeDetailScreen(
     LaunchedEffect(employeeId) {
         employee = withContext(Dispatchers.IO) { container.employeeRepository.getById(employeeId) }
         profileJpeg = withContext(Dispatchers.IO) {
-            container.employeeRepository.getCenterEnrollmentPhoto(employeeId)
+            container.employeeRepository.getProfilePhoto(employeeId)
         }
     }
 

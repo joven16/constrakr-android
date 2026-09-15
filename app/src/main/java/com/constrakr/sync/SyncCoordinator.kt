@@ -3,6 +3,7 @@ package com.constrakr.sync
 import android.content.Context
 import android.util.Base64
 import com.constrakr.attendance.AttendancePhotoStore
+import com.constrakr.enrollment.ProfilePhotoStore
 import com.constrakr.database.AttendanceRepository
 import com.constrakr.database.EmployeeEntity
 import com.constrakr.database.EmployeeRepository
@@ -177,6 +178,7 @@ class SyncCoordinator(
             _status.value = "Uploading face data…"
             total += uploadPendingFaceEmbeddings(auth)
             total += uploadPendingEnrollmentPhotos(auth)
+            total += uploadPendingProfilePhotos(auth)
 
             _status.value = "Uploading attendance…"
             for (row in attendance.getPending()) {
@@ -249,6 +251,7 @@ class SyncCoordinator(
             }
             total += uploadPendingFaceEmbeddings(auth, id)
             total += uploadPendingEnrollmentPhotos(auth, id)
+            total += uploadPendingProfilePhotos(auth, id)
             _status.value = if (total > 0) "Uploaded $total registration item(s)" else "Registration uploaded"
             total
         }.fold(
@@ -282,6 +285,33 @@ class SyncCoordinator(
             count++
             count += uploadPendingFaceEmbeddings(auth, row.id)
             count += uploadPendingEnrollmentPhotos(auth, row.id)
+            count += uploadPendingProfilePhotos(auth, row.id)
+        }
+        return count
+    }
+
+    private suspend fun uploadPendingProfilePhotos(auth: String, employeeLocalId: String? = null): Int {
+        val pendingIds = ProfilePhotoStore.pendingEmployeeIds(context).let { ids ->
+            if (employeeLocalId == null) ids else ids.filter { it == employeeLocalId }
+        }
+        var count = 0
+        for (localId in pendingIds) {
+            val jpeg = ProfilePhotoStore.load(context, UUID.fromString(localId)) ?: continue
+            val employee = employees.getEntity(localId) ?: continue
+            val serverId = employee.serverId
+                ?: error("Profile photo: upload employee first")
+            api.postEmployeeProfilePhoto(
+                auth,
+                deviceLocalId,
+                com.constrakr.network.EmployeeProfilePhotoPostRequest(
+                    employeeLocalId = UUID.fromString(localId),
+                    employeeServerId = serverId,
+                    jpegBase64 = Base64.encodeToString(jpeg, Base64.NO_WRAP)
+                )
+            )
+            ProfilePhotoStore.delete(context, localId)
+            count++
+            AppLog.d("Uploaded profile photo for employee $localId")
         }
         return count
     }

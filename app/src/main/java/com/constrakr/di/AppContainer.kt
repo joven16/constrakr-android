@@ -40,7 +40,7 @@ class AppContainer(context: Context) {
     val themeSettings = AppThemeSettings(context)
     val registrationPoseSettings = RegistrationPoseSettings(context)
     val faceScanSettings = FaceScanSettings(context)
-    val employeeRepository = EmployeeRepository(database, secureStore)
+    val employeeRepository = EmployeeRepository(database, secureStore, context.applicationContext)
     val attendanceRepository = AttendanceRepository(database)
     val api = ApiClient.create(context)
     val clockGuard = ClockIntegrityGuard(context) {

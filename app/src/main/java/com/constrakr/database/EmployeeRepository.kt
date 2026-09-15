@@ -1,6 +1,8 @@
 package com.constrakr.database
 
+import android.content.Context
 import android.util.Base64
+import com.constrakr.enrollment.ProfilePhotoStore
 import com.constrakr.domain.Employee
 import com.constrakr.domain.FaceEmbedding
 import com.constrakr.domain.FacePose
@@ -14,7 +16,8 @@ import java.util.UUID
 
 class EmployeeRepository(
     private val db: ConsTrakrDatabase,
-    private val secureStore: SecureFaceTemplateStore
+    private val secureStore: SecureFaceTemplateStore,
+    private val appContext: Context
 ) {
     private val dao get() = db.employeeDao()
 
@@ -38,6 +41,10 @@ class EmployeeRepository(
         enrollmentPhotoDao().forEmployee(employeeId.toString())
             .firstOrNull { it.pose == FacePose.CENTER.raw }
             ?.jpegData
+
+    suspend fun getProfilePhoto(employeeId: UUID): ByteArray? =
+        ProfilePhotoStore.load(appContext, employeeId)
+            ?: getCenterEnrollmentPhoto(employeeId)
 
     suspend fun getAllEnrolled(): List<Employee> =
         dao.getAll().map { it.toDomain(secureStore) }.filter { it.isEnrolled }
@@ -171,6 +178,7 @@ class EmployeeRepository(
         val idStr = id.toString()
         db.faceEmbeddingDao().deleteForEmployee(idStr)
         db.faceEnrollmentPhotoDao().deleteForEmployee(idStr)
+        ProfilePhotoStore.delete(appContext, idStr)
         dao.delete(idStr)
     }
 
@@ -200,6 +208,7 @@ class EmployeeRepository(
         position: String,
         embeddings: List<FaceEmbedding>,
         enrollmentPhotos: Map<FacePose, ByteArray> = emptyMap(),
+        profilePhotoJpeg: ByteArray? = null,
         assignedSiteId: UUID? = null,
         assignedSiteName: String = "",
         assignedSiteLocation: String = "",
@@ -249,6 +258,7 @@ class EmployeeRepository(
                 )
             )
         }
+        profilePhotoJpeg?.let { ProfilePhotoStore.save(appContext, id, it) }
         return entity.toDomain(secureStore)
     }
 
