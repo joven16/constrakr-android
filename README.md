@@ -6,7 +6,7 @@ Native Android port of [ConsTrakr iOS](https://github.com/joven16/constrakr).
 
 | Target | Device | Android |
 |--------|--------|---------|
-| Dev kiosk | Samsung Galaxy S8 | 9 (API 28) |
+| Dev kiosk | Samsung Galaxy A17+ | 13+ |
 | Production | Samsung Galaxy A17+ | 13+ |
 
 - **minSdk:** 28  
