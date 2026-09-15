@@ -1,0 +1,223 @@
+package com.constrakr.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import com.constrakr.ConsTrakrApp
+import com.constrakr.ui.components.ConsTrakrCard
+import com.constrakr.ui.components.SiteHeader
+import com.constrakr.ui.components.rememberAdminGate
+import kotlinx.coroutines.launch
+
+@Composable
+fun MoreScreen(
+    maintenanceActive: Boolean,
+    onEndMaintenance: () -> Unit,
+    onJobSites: () -> Unit,
+    onSettings: () -> Unit,
+    onAppearance: () -> Unit
+) {
+    val container = ConsTrakrApp.instance.container
+    val scope = rememberCoroutineScope()
+    val adminGate = rememberAdminGate()
+    val syncStatus by container.syncCoordinator.status.collectAsState()
+    val authState by container.syncCoordinator.authState.collectAsState()
+    val session by container.accessSession.state.collectAsState()
+    var user by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SiteHeader(
+            "More",
+            container.accessSession.operatorSiteTitle?.let { title -> "Operating site: $title" }
+        )
+
+        if (maintenanceActive) {
+            ConsTrakrCard {
+                Text(
+                    "${container.kioskMaintenanceSession.remainingMinutes()} min remaining",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Button(onClick = onEndMaintenance, modifier = Modifier.fillMaxWidth()) {
+                    Text("Done")
+                }
+            }
+        }
+
+        ConsTrakrCard {
+            RowItem(
+                title = if (container.accessSession.isAdminUnlocked) "Admin unlocked" else "Unlock admin",
+                subtitle = session.unlockedOperatorName ?: "6-digit code · 15 min",
+                icon = if (container.accessSession.isAdminUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
+                onClick = {
+                    if (container.accessSession.isAdminUnlocked) {
+                        container.accessSession.lock()
+                        message = "Admin locked"
+                    } else {
+                        adminGate.withAdmin { message = "Admin unlocked for 15 minutes" }
+                    }
+                }
+            )
+            if (container.accessSession.isAdminUnlocked) {
+                Button(onClick = { container.accessSession.lock() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Lock admin now")
+                }
+            }
+        }
+
+        ConsTrakrCard {
+            Text("Sync Account", style = MaterialTheme.typography.titleMedium)
+            if (authState.isSignedIn) {
+                Text(
+                    "Signed in as ${authState.username ?: "Admin"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                Text(
+                    "Device: ${container.deviceStore.deviceName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "ID: ${container.deviceStore.localId}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Button(onClick = {
+                    scope.launch { container.syncCoordinator.syncPending().onFailure { message = it.message } }
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sync now")
+                }
+                Button(
+                    onClick = {
+                        adminGate.withAdmin {
+                            container.syncCoordinator.signOut()
+                            user = ""
+                            pass = ""
+                            message = "Signed out"
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Sign out")
+                }
+            } else {
+                OutlinedTextField(
+                    value = user,
+                    onValueChange = { user = it },
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+                OutlinedTextField(
+                    value = pass,
+                    onValueChange = { pass = it },
+                    label = { Text("Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+                Text(
+                    "Device ID: ${container.deviceStore.localId}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Button(onClick = {
+                    scope.launch {
+                        container.syncCoordinator.login(user, pass)
+                            .onSuccess { message = it }
+                            .onFailure { message = it.message }
+                    }
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign in")
+                }
+            }
+            syncStatus?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
+            Text(
+                "Use your sync account to upload attendance and employees to the server.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        ConsTrakrCard {
+            RowItem("Appearance", "Theme", onClick = onAppearance)
+        }
+
+        if (container.accessSession.canManageJobSites()) {
+            ConsTrakrCard {
+                RowItem("Job Sites", "GPS pins & default site", onClick = onJobSites)
+            }
+        }
+
+        if (container.accessSession.canAccessAdminSettings()) {
+            ConsTrakrCard {
+                RowItem("Settings", "Scanner & diagnostics", onClick = onSettings)
+            }
+        }
+
+        adminGate.blockedMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error)
+        }
+        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+    }
+}
+
+@Composable
+private fun RowItem(
+    title: String,
+    subtitle: String? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    onClick: () -> Unit
+) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        icon?.let { Icon(it, contentDescription = null, modifier = Modifier.padding(end = 12.dp)) }
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        }
+        Icon(Icons.Default.ChevronRight, contentDescription = null)
+    }
+}
