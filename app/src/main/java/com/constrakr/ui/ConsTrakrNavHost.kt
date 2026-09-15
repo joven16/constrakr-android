@@ -5,9 +5,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.constrakr.ui.components.ConnectivityStatusChip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Face
@@ -25,7 +30,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import com.constrakr.ui.components.ScreenLockOverlay
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,7 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.constrakr.ConsTrakrApp
 import com.constrakr.MainActivity
 import com.constrakr.kiosk.KioskController
-import com.constrakr.ui.components.MaintenancePinSheet
+import com.constrakr.ui.components.AdminCodeSheet
 import com.constrakr.ui.screens.DashboardScreen
 import com.constrakr.ui.screens.DtrScreen
 import com.constrakr.ui.screens.EmployeeDetailScreen
@@ -91,9 +95,7 @@ fun ConsTrakrNavHost() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
     var logoTaps by rememberSaveable { mutableIntStateOf(0) }
-    var showMaintenancePin by remember { mutableStateOf(false) }
-    var screenLocked by rememberSaveable { mutableStateOf(false) }
-
+    var showMaintenanceAdmin by remember { mutableStateOf(false) }
     val maintenanceActive by container.kioskMaintenanceSession.isActive.collectAsState()
 
     val kioskController = (activity as? MainActivity)?.kioskController ?: kiosk
@@ -112,11 +114,7 @@ fun ConsTrakrNavHost() {
 
     LaunchedEffect(overlay, maintenanceActive) {
         if (maintenanceActive) return@LaunchedEffect
-        if (overlay == Overlay.None || overlay == Overlay.Enrollment) {
-            kioskController.enterKioskIfNeeded(activity)
-        } else {
-            kioskController.pauseLockTaskForNavigation(activity)
-        }
+        kioskController.enterKioskIfNeeded(activity)
     }
 
     fun onHiddenMaintenanceTap() {
@@ -124,12 +122,16 @@ fun ConsTrakrNavHost() {
         if (logoTaps >= 7) {
             logoTaps = 0
             if (kiosk.isDeviceOwner) {
-                showMaintenancePin = true
+                showMaintenanceAdmin = true
             }
         }
     }
 
-    BackHandler(enabled = showMaintenancePin) { showMaintenancePin = false }
+    fun requestScreenLock() {
+        kioskController.lockDeviceScreen()
+    }
+
+    BackHandler(enabled = showMaintenanceAdmin) { showMaintenanceAdmin = false }
 
     Box(
         Modifier
@@ -137,13 +139,15 @@ fun ConsTrakrNavHost() {
             .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
-        MaintenancePinSheet(
-            visible = showMaintenancePin,
-            onDismiss = { showMaintenancePin = false },
+        AdminCodeSheet(
+            visible = showMaintenanceAdmin,
+            onDismiss = { showMaintenanceAdmin = false },
             onVerified = {
                 container.kioskMaintenanceSession.unlock()
                 kiosk.exitKioskForMaintenance(activity)
-            }
+            },
+            title = "Exit kiosk mode",
+            subtitle = "Enter the 6-digit admin code for temporary access (15 minutes)."
         )
 
         when (val o = overlay) {
@@ -218,8 +222,11 @@ fun ConsTrakrNavHost() {
                             }
                         },
                         actions = {
-                            IconButton(onClick = { screenLocked = true }) {
-                                Icon(Icons.Default.Lock, contentDescription = "Lock screen")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                ConnectivityStatusChip(compact = true)
+                                IconButton(onClick = ::requestScreenLock) {
+                                    Icon(Icons.Default.Lock, contentDescription = "Lock screen")
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -271,7 +278,7 @@ fun ConsTrakrNavHost() {
                             MainTab.Dtr -> DtrScreen()
                             MainTab.Scanner -> ScannerScreen(
                                 onHiddenMaintenanceTap = ::onHiddenMaintenanceTap,
-                                onLockScreen = { screenLocked = true }
+                                onLockScreen = ::requestScreenLock
                             )
                             MainTab.More -> MoreScreen(
                                 maintenanceActive = maintenanceActive,
@@ -288,6 +295,19 @@ fun ConsTrakrNavHost() {
                 }
             }
         }
-        ScreenLockOverlay(locked = screenLocked, onUnlock = { screenLocked = false })
+        if (overlay != Overlay.None) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 4.dp)
+                    .zIndex(20f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ConnectivityStatusChip(compact = true)
+                IconButton(onClick = ::requestScreenLock) {
+                    Icon(Icons.Default.Lock, contentDescription = "Lock screen")
+                }
+            }
+        }
     }
 }

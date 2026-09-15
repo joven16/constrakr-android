@@ -9,6 +9,7 @@ import com.constrakr.database.EmployeeEntity
 import com.constrakr.database.EmployeeRepository
 import com.constrakr.domain.CheckType
 import com.constrakr.domain.DeviceStore
+import com.constrakr.domain.SyncStatus
 import com.constrakr.domain.JobSite
 import com.constrakr.domain.JobSiteStore
 import com.constrakr.network.ApiClient
@@ -21,6 +22,8 @@ import com.constrakr.network.JobSitePostRequest
 import com.constrakr.admin.PendingEmployeeDeletionStore
 import com.constrakr.domain.Employee
 import com.constrakr.util.AppLog
+import com.constrakr.util.appResultOf
+import kotlinx.coroutines.CancellationException
 import com.constrakr.BuildConfig
 import retrofit2.HttpException
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +35,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 class SyncCoordinator(
@@ -84,14 +88,14 @@ class SyncCoordinator(
     )
 
     suspend fun pingHealth(): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
+        appResultOf {
             val r = api.health()
             "Server OK · ${r.serverTime ?: r.status ?: "online"}"
         }
     }
 
     suspend fun login(username: String, password: String): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
+        appResultOf {
             val r = api.login(com.constrakr.network.LoginRequest(username, password))
             authToken = r.resolvedToken ?: error("No token in response")
             syncUsername = username.trim()
@@ -140,6 +144,33 @@ class SyncCoordinator(
         }
     }
 
+    /** Fast path after punch or DTR refresh — upload punches, reconcile voids, pull server DTR. */
+    suspend fun syncAttendanceOnly(focusDate: LocalDate? = null): Result<Int> = withContext(Dispatchers.IO) {
+        val token = authToken ?: return@withContext Result.failure(
+            IllegalStateException("Sign in under More → Sync Account")
+        )
+        val auth = ApiClient.authHeader(token)!!
+        appResultOf {
+            _status.value = "Syncing punches…"
+            registerDeviceWithServer()
+            var total = uploadPendingAttendance(auth)
+            _status.value = "Checking server updates…"
+            total += reconcileRemoteAttendanceVoids(auth)
+            _status.value = "Downloading DTR…"
+            total += pullAttendance(auth, focusDate)
+            _status.value = if (total > 0) "Synced $total attendance item(s)" else "Up to date"
+            total
+        }.fold(
+            onSuccess = { Result.success(it) },
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                AppLog.e("Attendance sync failed", error)
+                _status.value = error.message ?: "Sync failed"
+                Result.failure(error)
+            }
+        )
+    }
+
     suspend fun syncPending(focusDate: LocalDate? = null): Result<Int> = withContext(Dispatchers.IO) {
         val token = authToken ?: return@withContext Result.failure(
             IllegalStateException("Sign in under More → Sync Account")
@@ -147,7 +178,7 @@ class SyncCoordinator(
         val auth = ApiClient.authHeader(token)!!
         var total = 0
 
-        runCatching {
+        appResultOf {
             _status.value = "Syncing…"
             registerDeviceWithServer()
             processPendingEmployeeDeletions()
@@ -180,39 +211,26 @@ class SyncCoordinator(
             total += uploadPendingEnrollmentPhotos(auth)
             total += uploadPendingProfilePhotos(auth)
 
+            _status.value = "Downloading profile photos…"
+            total += pullProfilePhotos(auth, localByServerId)
+
             _status.value = "Uploading attendance…"
-            for (row in attendance.getPending()) {
-                val punchJpeg = AttendancePhotoStore.load(context, row.id)
-                val body = AttendancePostRequest(
-                    localId = UUID.fromString(row.id),
-                    employeeLocalId = UUID.fromString(row.employeeId),
-                    employeeServerId = row.employeeServerId,
-                    checkType = row.checkType,
-                    timestamp = Instant.ofEpochMilli(row.timestampMillis).toString(),
-                    confidenceScore = row.confidenceScore,
-                    notes = row.notes,
-                    punchPhotoBase64 = punchJpeg?.let {
-                        Base64.encodeToString(it, Base64.NO_WRAP)
-                    }
-                )
-                val resp = api.postAttendance(auth, deviceLocalId, body)
-                resp.serverId?.let {
-                    attendance.markSynced(row.id, it)
-                    AttendancePhotoStore.delete(context, row.id)
-                }
-                total++
-            }
+            total += uploadPendingAttendance(auth)
+
+            _status.value = "Checking server updates…"
+            total += reconcileRemoteAttendanceVoids(auth)
 
             _status.value = "Downloading attendance…"
-            total += pullAttendance(auth, focusDate ?: LocalDate.now())
+            total += pullAttendance(auth, focusDate)
 
             _status.value = if (total > 0) "Synced $total item(s)" else "Up to date"
         }.fold(
             onSuccess = { Result.success(total) },
-            onFailure = {
-                AppLog.e("Sync failed", it)
-                _status.value = it.message ?: "Sync failed"
-                Result.failure(it)
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                AppLog.e("Sync failed", error)
+                _status.value = error.message ?: "Sync failed"
+                Result.failure(error)
             }
         )
     }
@@ -224,7 +242,7 @@ class SyncCoordinator(
         )
         val auth = ApiClient.authHeader(token)!!
         val id = localEmployeeId.toString()
-        runCatching {
+        appResultOf {
             _status.value = "Uploading registration…"
             registerDeviceWithServer()
             var total = 0
@@ -256,10 +274,11 @@ class SyncCoordinator(
             total
         }.fold(
             onSuccess = { Result.success(it) },
-            onFailure = {
-                AppLog.e("Registration sync failed", it)
-                _status.value = it.message ?: "Registration sync failed"
-                Result.failure(it)
+            onFailure = { error ->
+                if (error is CancellationException) throw error
+                AppLog.e("Registration sync failed", error)
+                _status.value = error.message ?: "Registration sync failed"
+                Result.failure(error)
             }
         )
     }
@@ -309,9 +328,47 @@ class SyncCoordinator(
                     jpegBase64 = Base64.encodeToString(jpeg, Base64.NO_WRAP)
                 )
             )
-            ProfilePhotoStore.delete(context, localId)
+            ProfilePhotoStore.markSynced(context, UUID.fromString(localId))
             count++
             AppLog.d("Uploaded profile photo for employee $localId")
+        }
+        return count
+    }
+
+    /** Restore profile photo from server when local file is missing (e.g. after a prior sync deleted it). */
+    suspend fun ensureLocalProfilePhoto(employeeId: UUID): Boolean = withContext(Dispatchers.IO) {
+        if (ProfilePhotoStore.load(context, employeeId) != null) return@withContext true
+        val token = authToken ?: return@withContext false
+        val auth = ApiClient.authHeader(token) ?: return@withContext false
+        val employee = employees.getEntity(employeeId.toString()) ?: return@withContext false
+        val serverId = employee.serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return@withContext false
+        runCatching {
+            val dto = api.getEmployeeProfilePhotos(
+                auth = auth,
+                deviceId = deviceLocalId,
+                includeMedia = "1",
+                employeeServerId = serverId
+            ).items.firstOrNull { it.hasJpegData && !it.jpegBase64.isNullOrBlank() } ?: return@runCatching false
+            val jpeg = Base64.decode(dto.jpegBase64, Base64.NO_WRAP)
+            ProfilePhotoStore.save(context, employeeId, jpeg)
+            ProfilePhotoStore.markSynced(context, employeeId)
+            true
+        }.getOrDefault(false)
+    }
+
+    private suspend fun pullProfilePhotos(auth: String, localByServerId: Map<String, String>): Int {
+        val rows = api.getEmployeeProfilePhotos(auth, deviceLocalId, includeMedia = "1").items
+        var count = 0
+        for (dto in rows) {
+            if (!dto.hasJpegData || dto.jpegBase64.isNullOrBlank()) continue
+            val localId = dto.employeeLocalId?.toString()
+                ?: dto.employeeServerId?.let { localByServerId[it] }
+                ?: continue
+            if (ProfilePhotoStore.load(context, UUID.fromString(localId)) != null) continue
+            val jpeg = Base64.decode(dto.jpegBase64, Base64.NO_WRAP)
+            ProfilePhotoStore.save(context, UUID.fromString(localId), jpeg)
+            ProfilePhotoStore.markSynced(context, UUID.fromString(localId))
+            count++
         }
         return count
     }
@@ -439,26 +496,120 @@ class SyncCoordinator(
         return count
     }
 
-    private suspend fun pullAttendance(auth: String, date: LocalDate): Int {
-        val fmt = DateTimeFormatter.ISO_LOCAL_DATE
-        val start = date.format(fmt)
-        val remote = api.getAttendance(auth, deviceLocalId, startDate = start, endDate = start).items
+    private suspend fun uploadPendingAttendance(auth: String): Int {
         var count = 0
-        for (dto in remote) {
-            val ts = runCatching { Instant.parse(dto.timestamp).toEpochMilli() }.getOrNull() ?: continue
-            attendance.upsertFromRemote(
-                serverId = dto.serverId,
-                localId = dto.localId,
-                employeeId = dto.employeeLocalId,
-                employeeServerId = dto.employeeServerId,
-                checkType = CheckType.entries.firstOrNull { it.raw == dto.checkType } ?: continue,
-                timestampMillis = ts,
-                confidence = (dto.confidenceScore ?: 0.0).toFloat(),
-                notes = dto.notes
+        for (row in attendance.getPending()) {
+            val punchJpeg = AttendancePhotoStore.load(context, row.id)
+            val body = AttendancePostRequest(
+                localId = UUID.fromString(row.id),
+                employeeLocalId = UUID.fromString(row.employeeId),
+                employeeServerId = row.employeeServerId,
+                checkType = row.checkType,
+                timestamp = Instant.ofEpochMilli(row.timestampMillis).toString(),
+                confidenceScore = row.confidenceScore,
+                notes = row.notes,
+                punchPhotoBase64 = punchJpeg?.let {
+                    Base64.encodeToString(it, Base64.NO_WRAP)
+                }
             )
+            val resp = api.postAttendance(auth, deviceLocalId, body)
+            resp.serverId?.let {
+                attendance.markSynced(row.id, it)
+                AttendancePhotoStore.delete(context, row.id)
+            }
             count++
         }
         return count
+    }
+
+    private suspend fun reconcileRemoteAttendanceVoids(auth: String): Int {
+        val since = Instant.now().minus(90, ChronoUnit.DAYS).toString()
+        val voided = api.getAttendance(auth, deviceLocalId, updatedSince = since).items
+            .filter { it.isVoid }
+        var removed = 0
+        for (dto in voided) {
+            val ts = runCatching { Instant.parse(dto.timestamp).toEpochMilli() }.getOrNull() ?: continue
+            val local = attendance.findForVoidReconcile(
+                serverId = dto.serverId,
+                localId = dto.localId,
+                employeeServerId = dto.employeeServerId,
+                timestampMillis = ts,
+                checkType = dto.checkType
+            ) ?: continue
+            attendance.deleteLocalRecord(context, local.id)
+            removed++
+        }
+        return removed
+    }
+
+    private suspend fun pullAttendance(auth: String, focusDate: LocalDate?): Int {
+        val fmt = DateTimeFormatter.ISO_LOCAL_DATE
+        val endDate = focusDate ?: LocalDate.now()
+        val startDate = focusDate ?: endDate.minusDays(14)
+        val remote = api.getAttendance(
+            auth,
+            deviceLocalId,
+            startDate = startDate.format(fmt),
+            endDate = endDate.format(fmt)
+        ).items.filter { !it.isVoid }
+
+        if (remote.isEmpty() && focusDate == null) return 0
+
+        val localIdByServerId = employees.serverIdToLocalIdMap()
+        var count = 0
+
+        if (focusDate != null) {
+            val (dayStart, dayEnd) = dayBounds(focusDate)
+            val remoteServerIds = remote.mapNotNull { it.serverId?.trim()?.takeIf { id -> id.isNotEmpty() } }.toSet()
+            if (remoteServerIds.isNotEmpty()) {
+                for (local in attendance.forDayEntities(dayStart, dayEnd)) {
+                    val serverId = local.serverId?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+                    if (local.syncStatus != SyncStatus.SYNCED.name.lowercase()) continue
+                    if (serverId !in remoteServerIds) {
+                        attendance.deleteLocalRecord(context, local.id)
+                        count++
+                    }
+                }
+            }
+        }
+
+        for (dto in remote) {
+            val ts = runCatching { Instant.parse(dto.timestamp).toEpochMilli() }.getOrNull() ?: continue
+            val checkType = CheckType.entries.firstOrNull { it.raw == dto.checkType } ?: continue
+            val employeeLocalId = resolveEmployeeLocalId(dto, localIdByServerId) ?: continue
+            if (attendance.upsertFromRemote(
+                    serverId = dto.serverId,
+                    localId = dto.localId,
+                    employeeId = employeeLocalId,
+                    employeeServerId = dto.employeeServerId,
+                    checkType = checkType,
+                    timestampMillis = ts,
+                    confidence = (dto.confidenceScore ?: 0.0).toFloat(),
+                    notes = dto.notes
+                )
+            ) {
+                count++
+            }
+        }
+        return count
+    }
+
+    private suspend fun resolveEmployeeLocalId(
+        dto: com.constrakr.network.AttendanceDto,
+        localIdByServerId: Map<String, String>
+    ): UUID? {
+        dto.employeeServerId?.trim()?.takeIf { it.isNotEmpty() }?.let { serverId ->
+            localIdByServerId[serverId]?.let { return UUID.fromString(it) }
+            employees.localIdForServerId(serverId)?.let { return it }
+        }
+        return dto.employeeLocalId
+    }
+
+    private fun dayBounds(date: LocalDate): Pair<Long, Long> {
+        val zone = ZoneId.systemDefault()
+        val start = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        return start to end
     }
 
     data class SyncAuthState(

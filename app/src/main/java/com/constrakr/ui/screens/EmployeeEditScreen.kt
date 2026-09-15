@@ -1,10 +1,12 @@
 package com.constrakr.ui.screens
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
@@ -26,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.constrakr.ConsTrakrApp
+import com.constrakr.domain.FacePose
+import com.constrakr.ui.components.EmployeePhotosPanel
 import com.constrakr.ui.util.toTitleCaseWords
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,6 +46,8 @@ fun EmployeeEditScreen(employeeId: UUID, onBack: () -> Unit, onSaved: () -> Unit
     var dept by remember { mutableStateOf("") }
     var position by remember { mutableStateOf("") }
     var siteName by remember { mutableStateOf("") }
+    var profileJpeg by remember { mutableStateOf<ByteArray?>(null) }
+    var posePhotos by remember { mutableStateOf<Map<FacePose, ByteArray>>(emptyMap()) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
 
@@ -52,6 +58,17 @@ fun EmployeeEditScreen(employeeId: UUID, onBack: () -> Unit, onSaved: () -> Unit
             dept = e.department
             position = e.position
             siteName = e.assignedSiteName
+        }
+        withContext(Dispatchers.IO) {
+            if (container.employeeRepository.getProfilePhoto(employeeId) == null) {
+                container.syncCoordinator.ensureLocalProfilePhoto(employeeId)
+            }
+        }
+        profileJpeg = withContext(Dispatchers.IO) {
+            container.employeeRepository.getProfilePhoto(employeeId)
+        }
+        posePhotos = withContext(Dispatchers.IO) {
+            container.employeeRepository.getEnrollmentPhotos(employeeId)
         }
     }
 
@@ -67,7 +84,18 @@ fun EmployeeEditScreen(employeeId: UUID, onBack: () -> Unit, onSaved: () -> Unit
             )
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            EmployeePhotosPanel(
+                profileJpeg = profileJpeg,
+                posePhotos = posePhotos,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
             OutlinedTextField(
                 value = first,
                 onValueChange = { first = it.toTitleCaseWords() },

@@ -48,9 +48,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.constrakr.camera.CameraXManager
-import com.constrakr.camera.toBitmap
+import com.constrakr.camera.toCameraFrame
 import com.constrakr.domain.CheckType
 import com.constrakr.ui.components.CameraPermissionGate
+import com.constrakr.ui.components.ConnectivityChipVariant
+import com.constrakr.ui.components.ConnectivityStatusChip
 import com.constrakr.ui.components.FaceGuideOverlay
 import com.constrakr.ui.components.ScannerBorderState
 import com.constrakr.ui.components.VoicePrompt
@@ -107,9 +109,8 @@ fun ScannerScreen(
                     val camera = CameraXManager(context, lifecycleOwner)
                     camera.onFrame = frame@{ proxy ->
                         if (!vm.frameAnalysisEnabled) return@frame
-                        val bitmap = proxy.toBitmap() ?: return@frame
-                        val image = InputImage.fromBitmap(bitmap, 0)
-                        vm.onFrame(bitmap, image)
+                        val frame = proxy.toCameraFrame() ?: return@frame
+                        vm.onFrame(frame.bitmap, frame.inputImage)
                     }
                     camera.bind(previewView)
                     onDispose { camera.shutdown() }
@@ -151,8 +152,11 @@ fun ScannerScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    IconButton(onClick = onLockScreen) {
-                        Icon(Icons.Default.Lock, contentDescription = "Lock screen", tint = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ConnectivityStatusChip(compact = true, variant = ConnectivityChipVariant.OnDark)
+                        IconButton(onClick = onLockScreen) {
+                            Icon(Icons.Default.Lock, contentDescription = "Lock screen", tint = Color.White)
+                        }
                     }
                 }
 

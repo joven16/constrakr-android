@@ -50,7 +50,7 @@ class FaceScanSettings(context: Context) {
         return Level.entries.firstOrNull { it.steps == current }
     }
 
-    private fun defaultFor(step: FaceScanStep): Boolean = true
+    private fun defaultFor(step: FaceScanStep): Boolean = false
 
     companion object {
         private const val PREFS = "constrakr.face-scan"

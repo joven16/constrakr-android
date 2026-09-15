@@ -9,13 +9,15 @@ import com.constrakr.ConsTrakrApp
 fun AdminCodeSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
-    onVerified: () -> Unit
+    onVerified: () -> Unit,
+    title: String = "Admin code required",
+    subtitle: String? = null
 ) {
     if (!visible) return
 
     val container = ConsTrakrApp.instance.container
     val assignedName = container.deviceStore.assignedUserName
-    val subtitle = buildString {
+    val resolvedSubtitle = subtitle ?: buildString {
         append("Enter the 6-digit admin code to continue.")
         if (!assignedName.isNullOrBlank()) {
             append("\n\nUse the code for $assignedName.")
@@ -29,8 +31,8 @@ fun AdminCodeSheet(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         PasscodeKeypad(
-            title = "Admin code required",
-            subtitle = subtitle,
+            title = title,
+            subtitle = resolvedSubtitle,
             onCancel = onDismiss,
             onSubmit = { code ->
                 container.adminCodeService.verify(code).map { name ->

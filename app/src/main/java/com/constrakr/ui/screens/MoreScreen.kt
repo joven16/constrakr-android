@@ -24,7 +24,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +34,7 @@ import com.constrakr.ConsTrakrApp
 import com.constrakr.ui.components.ConsTrakrCard
 import com.constrakr.ui.components.SiteHeader
 import com.constrakr.ui.components.rememberAdminGate
+import com.constrakr.util.isUserCancellation
 import kotlinx.coroutines.launch
 
 @Composable
@@ -46,7 +46,6 @@ fun MoreScreen(
     onAppearance: () -> Unit
 ) {
     val container = ConsTrakrApp.instance.container
-    val scope = rememberCoroutineScope()
     val adminGate = rememberAdminGate()
     val syncStatus by container.syncCoordinator.status.collectAsState()
     val authState by container.syncCoordinator.authState.collectAsState()
@@ -118,7 +117,12 @@ fun MoreScreen(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Button(onClick = {
-                    scope.launch { container.syncCoordinator.syncPending().onFailure { message = it.message } }
+                    container.applicationScope.launch {
+                        container.syncCoordinator.syncPending()
+                            .onFailure { error ->
+                                if (!error.isUserCancellation()) message = error.message
+                            }
+                    }
                 }, modifier = Modifier.fillMaxWidth()) {
                     Text("Sync now")
                 }
@@ -161,10 +165,12 @@ fun MoreScreen(
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
                 Button(onClick = {
-                    scope.launch {
+                    container.applicationScope.launch {
                         container.syncCoordinator.login(user, pass)
                             .onSuccess { message = it }
-                            .onFailure { message = it.message }
+                            .onFailure { error ->
+                                if (!error.isUserCancellation()) message = error.message
+                            }
                     }
                 }, modifier = Modifier.fillMaxWidth()) {
                     Text("Sign in")

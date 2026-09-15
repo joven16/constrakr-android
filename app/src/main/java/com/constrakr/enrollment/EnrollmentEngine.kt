@@ -84,7 +84,7 @@ class EnrollmentEngine(
         get() = profilePhotoJpeg != null
 
     fun captureProfilePhoto(bitmap: Bitmap) {
-        profilePhotoJpeg = EnrollmentPhotoEncoder.encodeJpeg(bitmap)
+        profilePhotoJpeg = com.constrakr.face.JpegImageUtils.encodePortraitJpeg(bitmap)
     }
 
     fun clearProfilePhoto() {
@@ -356,7 +356,8 @@ class EnrollmentEngine(
         }
 
         captured[currentPose] = FaceEmbedding(currentPose, values)
-        capturedPhotos[currentPose] = EnrollmentPhotoEncoder.encodeJpeg(crop)
+        // Store full camera frame for employee profile display; crop is only for AdaFace embedding.
+        capturedPhotos[currentPose] = com.constrakr.face.JpegImageUtils.encodePoseDisplayFrame(bitmap)
         poseHoldStart = null
 
         val next = currentPose.nextIn(enrollmentOrder)

@@ -104,6 +104,14 @@ interface ConsTrakrApi {
         @Body body: FaceEnrollmentPhotoPostRequest
     ): Map<String, String>
 
+    @GET("/constrakr-api/employee-profile-photos")
+    suspend fun getEmployeeProfilePhotos(
+        @Header("Authorization") auth: String,
+        @Header("X-Device-Local-Id") deviceId: String,
+        @Query("include_media") includeMedia: String = "1",
+        @Query("employee_server_id") employeeServerId: String? = null
+    ): EmployeeProfilePhotosListResponse
+
     @POST("/constrakr-api/employee-profile-photos")
     suspend fun postEmployeeProfilePhoto(
         @Header("Authorization") auth: String,
@@ -116,7 +124,8 @@ interface ConsTrakrApi {
         @Header("Authorization") auth: String,
         @Header("X-Device-Local-Id") deviceId: String,
         @Query("start_date") startDate: String? = null,
-        @Query("end_date") endDate: String? = null
+        @Query("end_date") endDate: String? = null,
+        @Query("updated_since") updatedSince: String? = null
     ): AttendanceListResponse
 
     @POST("/constrakr-api/attendance")

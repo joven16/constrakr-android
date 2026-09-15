@@ -13,8 +13,8 @@ android {
         applicationId = "com.constrakr"
         minSdk = 28
         targetSdk = 35
-        versionCode = 41
-        versionName = "1.0.0-alpha41"
+        versionCode = 67
+        versionName = "1.0.0-alpha67"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -82,8 +82,8 @@ dependencies {
     // ML Kit face detection
     implementation("com.google.mlkit:face-detection:16.1.7")
 
-    // ONNX Runtime (AdaFace + MiniFASNet — same weights as iOS Core ML)
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
+    // ONNX Runtime (AdaFace + MiniFASNet). 1.22+ required for 16 KB page-size (Android 15+).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 
     // Room
     val room = "2.6.1"

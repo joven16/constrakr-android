@@ -7,6 +7,7 @@ import com.constrakr.network.ConsTrakrApi
 import com.constrakr.network.DeviceAdminCodeVerifyRequest
 import com.constrakr.sync.SyncCoordinator
 import com.constrakr.util.AppLog
+import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import retrofit2.HttpException
 
@@ -79,6 +80,8 @@ class AdminCodeService(
             accessSession.unlock(name)
             AppLog.d("Admin unlock OK for $name")
             Result.success(name)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             Result.failure(IllegalArgumentException(parseFailure(error), error))
         }

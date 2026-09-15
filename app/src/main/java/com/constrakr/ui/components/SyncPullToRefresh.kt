@@ -33,7 +33,11 @@ fun SyncPullToRefreshBox(
             scope.launch {
                 refreshing = true
                 try {
-                    sync.syncPending(focusDate)
+                    if (focusDate != null) {
+                        sync.syncAttendanceOnly(focusDate)
+                    } else {
+                        sync.syncPending()
+                    }
                 } finally {
                     refreshing = false
                 }

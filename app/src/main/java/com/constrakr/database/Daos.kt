@@ -57,6 +57,24 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance WHERE serverId = :serverId LIMIT 1")
     suspend fun getByServerId(serverId: String): AttendanceEntity?
 
+    @Query("SELECT * FROM attendance WHERE id = :localId LIMIT 1")
+    suspend fun getById(localId: String): AttendanceEntity?
+
+    @Query(
+        """SELECT * FROM attendance 
+           WHERE employeeServerId = :employeeServerId AND checkType = :checkType 
+           AND timestampMillis BETWEEN :windowStart AND :windowEnd LIMIT 1"""
+    )
+    suspend fun findByEmployeeServerAndTime(
+        employeeServerId: String,
+        checkType: String,
+        windowStart: Long,
+        windowEnd: Long
+    ): AttendanceEntity?
+
+    @Query("DELETE FROM attendance WHERE id = :localId")
+    suspend fun deleteById(localId: String)
+
     @Query("SELECT COUNT(*) FROM attendance WHERE syncStatus = 'pending'")
     fun observePendingCount(): Flow<Int>
 
@@ -105,6 +123,9 @@ interface FaceEmbeddingDao {
 
 @Dao
 interface FaceEnrollmentPhotoDao {
+    @Query("SELECT * FROM face_enrollment_photos")
+    suspend fun getAll(): List<FaceEnrollmentPhotoEntity>
+
     @Query("SELECT * FROM face_enrollment_photos WHERE employeeLocalId = :employeeId")
     suspend fun forEmployee(employeeId: String): List<FaceEnrollmentPhotoEntity>
 

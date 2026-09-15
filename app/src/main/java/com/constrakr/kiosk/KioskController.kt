@@ -33,7 +33,6 @@ class KioskController(context: Context) {
     /** One-time Device Owner provisioning — lock task packages, home app, keyguard. */
     fun configureDeviceOwner(activity: Activity) {
         if (!isDeviceOwner) return
-        settings.ensureDefaultPinIfNeeded()
         dpm.setLockTaskPackages(admin, arrayOf(appContext.packageName))
         applyLockTaskFeatures()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -68,7 +67,6 @@ class KioskController(context: Context) {
         }
     }
 
-    /** Pause Lock Task so system back works inside sub-screens (Settings, enrollment, etc.). */
     fun showSystemStatusBar() {
         if (!isDeviceOwner) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -106,11 +104,26 @@ class KioskController(context: Context) {
         return am.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
     }
 
-    /** Show clock, battery, and signal while pinned in Lock Task (kiosk). */
+    /** Turns the display off like the side power button (Device Owner only). */
+    fun lockDeviceScreen(): Boolean {
+        if (!isDeviceOwner) return false
+        return runCatching {
+            dpm.lockNow()
+            true
+        }.getOrElse {
+            AppLog.w("lockNow failed: ${it.message}")
+            false
+        }
+    }
+
+    /** Status bar info only — no Home ([]) or Recents (|||); Back (<) stays for in-app navigation. */
     private fun applyLockTaskFeatures() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             runCatching {
-                dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO)
+                dpm.setLockTaskFeatures(
+                    admin,
+                    DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
+                )
             }.onFailure { AppLog.w("Lock task features failed: ${it.message}") }
         }
     }

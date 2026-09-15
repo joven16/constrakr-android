@@ -1,5 +1,6 @@
 package com.constrakr.database
 
+import com.constrakr.attendance.AttendancePhotoStore
 import com.constrakr.domain.AttendanceRecord
 import com.constrakr.domain.CheckType
 import com.constrakr.domain.SyncStatus
@@ -54,6 +55,33 @@ class AttendanceRepository(private val db: ConsTrakrDatabase) {
     suspend fun forDay(dayStart: Long, dayEnd: Long): List<AttendanceRecord> =
         dao.forDay(dayStart, dayEnd).map { it.toDomain() }
 
+    suspend fun forDayEntities(dayStart: Long, dayEnd: Long): List<AttendanceEntity> =
+        dao.forDay(dayStart, dayEnd)
+
+    suspend fun deleteLocalRecord(context: android.content.Context, localId: String) {
+        AttendancePhotoStore.delete(context, localId)
+        dao.deleteById(localId)
+    }
+
+    suspend fun findForVoidReconcile(
+        serverId: String?,
+        localId: UUID,
+        employeeServerId: String?,
+        timestampMillis: Long,
+        checkType: String
+    ): AttendanceEntity? {
+        serverId?.trim()?.takeIf { it.isNotEmpty() }?.let { dao.getByServerId(it) }?.let { return it }
+        dao.getById(localId.toString())?.let { return it }
+        val empServer = employeeServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val windowMs = 3_000L
+        return dao.findByEmployeeServerAndTime(
+            employeeServerId = empServer,
+            checkType = checkType,
+            windowStart = timestampMillis - windowMs,
+            windowEnd = timestampMillis + windowMs
+        )
+    }
+
     suspend fun upsertFromRemote(
         serverId: String?,
         localId: UUID,
@@ -63,11 +91,42 @@ class AttendanceRepository(private val db: ConsTrakrDatabase) {
         timestampMillis: Long,
         confidence: Float,
         notes: String?
-    ) {
-        val existing = serverId?.let { dao.getByServerId(it) }
+    ): Boolean {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        val existingByServer = normalizedServerId?.let { dao.getByServerId(it) }
+        if (existingByServer != null) {
+            if (existingByServer.timestampMillis != timestampMillis ||
+                existingByServer.notes != notes
+            ) {
+                dao.insert(
+                    existingByServer.copy(
+                        timestampMillis = timestampMillis,
+                        notes = notes,
+                        confidenceScore = confidence.toDouble()
+                    )
+                )
+                return true
+            }
+            return false
+        }
+
+        val existingByLocal = dao.getById(localId.toString())
+        if (existingByLocal != null) {
+            if (existingByLocal.serverId.isNullOrBlank() && normalizedServerId != null) {
+                dao.insert(
+                    existingByLocal.copy(
+                        serverId = normalizedServerId,
+                        syncStatus = SyncStatus.SYNCED.name.lowercase()
+                    )
+                )
+                return true
+            }
+            return false
+        }
+
         val entity = AttendanceEntity(
-            id = existing?.id ?: localId.toString(),
-            serverId = serverId,
+            id = localId.toString(),
+            serverId = normalizedServerId,
             employeeId = employeeId.toString(),
             employeeServerId = employeeServerId,
             checkType = checkType.raw,
@@ -80,6 +139,7 @@ class AttendanceRepository(private val db: ConsTrakrDatabase) {
             punchSiteLocation = null
         )
         dao.insert(entity)
+        return true
     }
 
     private fun dayBounds(): Pair<Long, Long> {

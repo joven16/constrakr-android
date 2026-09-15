@@ -1,8 +1,6 @@
 package com.constrakr.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,11 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.DatePicker
@@ -28,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +33,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,18 +40,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.constrakr.ConsTrakrApp
 import com.constrakr.domain.CheckType
+import com.constrakr.ui.components.EmployeeProfileAvatar
 import com.constrakr.ui.components.EmptyState
 import com.constrakr.ui.components.SyncPullToRefreshBox
 import com.constrakr.ui.theme.SuccessGreen
 import com.constrakr.ui.theme.TealPrimary
 import com.constrakr.ui.theme.WarningOrange
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 private data class DtrRow(
+    val employeeId: UUID,
     val name: String,
     val code: String,
     val timeIn: String?,
@@ -76,8 +77,28 @@ fun DtrScreen() {
     val allAttendance by container.attendanceRepository.observeAll().collectAsState(initial = emptyList())
     var selectedDate by remember { mutableStateOf(System.currentTimeMillis()) }
     var showPicker by remember { mutableStateOf(false) }
+    var profilePhotos by remember { mutableStateOf<Map<UUID, ByteArray?>>(emptyMap()) }
     val dateFmt = remember { SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault()) }
     val timeFmt = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
+
+    LaunchedEffect(Unit) {
+        container.syncCoordinator.syncAttendanceOnly(selectedDate.toLocalDate())
+    }
+
+    LaunchedEffect(employees) {
+        withContext(Dispatchers.IO) {
+            for (emp in employees) {
+                if (container.employeeRepository.getProfilePhoto(emp.id) == null) {
+                    container.syncCoordinator.ensureLocalProfilePhoto(emp.id)
+                }
+            }
+        }
+        profilePhotos = withContext(Dispatchers.IO) {
+            employees.associate { emp ->
+                emp.id to container.employeeRepository.getProfilePhoto(emp.id)
+            }
+        }
+    }
 
     val (dayStart, dayEnd) = dayBounds(selectedDate)
     val dayRecords = remember(allAttendance, dayStart, dayEnd) {
@@ -89,6 +110,7 @@ fun DtrScreen() {
             val inTime = mine.filter { it.checkType == CheckType.CHECK_IN }.minByOrNull { it.timestampMillis }
             val outTime = mine.filter { it.checkType == CheckType.CHECK_OUT }.maxByOrNull { it.timestampMillis }
             DtrRow(
+                employeeId = emp.id,
                 name = emp.fullName,
                 code = emp.employeeCode,
                 timeIn = inTime?.let { timeFmt.format(Date(it.timestampMillis)) },
@@ -107,7 +129,7 @@ fun DtrScreen() {
                 TextButton(onClick = {
                     state.selectedDateMillis?.let { selectedDate = it }
                     showPicker = false
-                    scope.launch { container.syncCoordinator.syncPending(selectedDate.toLocalDate()) }
+                    scope.launch { container.syncCoordinator.syncAttendanceOnly(selectedDate.toLocalDate()) }
                 }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { showPicker = false }) { Text("Cancel") } }
@@ -206,8 +228,11 @@ fun DtrScreen() {
                         }
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     }
-                    items(rows, key = { it.code + it.name }) { row ->
-                        DtrEmployeeRow(row)
+                    items(rows, key = { it.employeeId.toString() }) { row ->
+                        DtrEmployeeRow(
+                            row = row,
+                            profileJpeg = profilePhotos[row.employeeId]
+                        )
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp, end = 16.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
@@ -220,14 +245,18 @@ fun DtrScreen() {
 }
 
 @Composable
-private fun DtrEmployeeRow(row: DtrRow) {
+private fun DtrEmployeeRow(row: DtrRow, profileJpeg: ByteArray?) {
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        EmployeeInitials(row.name)
+        EmployeeProfileAvatar(
+            name = row.name,
+            profileJpeg = profileJpeg,
+            size = 32.dp
+        )
         Column(
             Modifier
                 .weight(1f)
@@ -288,30 +317,6 @@ private fun DtrPunchCell(
                 fontWeight = FontWeight.SemiBold
             )
         }
-    }
-}
-
-@Composable
-private fun EmployeeInitials(name: String) {
-    val initials = name.split(" ")
-        .filter { it.isNotBlank() }
-        .take(2)
-        .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
-        .joinToString("")
-        .ifBlank { "?" }
-    Box(
-        Modifier
-            .size(32.dp)
-            .clip(CircleShape)
-            .background(TealPrimary.copy(alpha = 0.14f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            initials,
-            style = MaterialTheme.typography.labelSmall,
-            color = TealPrimary,
-            fontWeight = FontWeight.Bold
-        )
     }
 }
 

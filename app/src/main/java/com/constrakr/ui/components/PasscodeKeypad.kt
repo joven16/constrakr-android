@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.constrakr.config.ConsTrakrConstants
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @Composable
@@ -64,7 +65,7 @@ fun PasscodeKeypad(
                 verifying = true
                 val result = onSubmit(digits)
                 // Success dismisses the sheet — do not touch state after composition leaves.
-                if (result.isSuccess) return@launch
+                if (result.isSuccess || !isActive) return@launch
                 verifying = false
                 result.onFailure { err ->
                     error = err.message

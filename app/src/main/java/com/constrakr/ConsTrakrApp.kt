@@ -29,8 +29,20 @@ class ConsTrakrApp : Application() {
         adaFaceRecognizer = AdaFaceRecognizer(this)
         miniFasDetector = MiniFasLivenessDetector(this)
         container = com.constrakr.di.AppContainer(this)
+        migrateLegacyPosePhotos()
         scheduleBackgroundSync()
         registerDeviceIfSignedIn()
+    }
+
+    private fun migrateLegacyPosePhotos() {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching {
+                com.constrakr.database.PosePhotoOrientationMigration.runIfNeeded(
+                    this@ConsTrakrApp,
+                    container.database
+                )
+            }.onFailure { AppLog.w("Pose photo orientation migration skipped: ${it.message}") }
+        }
     }
 
     private fun registerDeviceIfSignedIn() {

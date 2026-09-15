@@ -77,7 +77,8 @@ data class AttendanceDto(
     @Json(name = "check_type") val checkType: String,
     @Json(name = "timestamp") val timestamp: String,
     @Json(name = "confidence_score") val confidenceScore: Double?,
-    @Json(name = "notes") val notes: String?
+    @Json(name = "notes") val notes: String?,
+    @Json(name = "is_void") val isVoid: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -218,3 +219,18 @@ data class EmployeeProfilePhotoPostRequest(
     @Json(name = "employee_server_id") val employeeServerId: String?,
     @Json(name = "jpeg_base64") val jpegBase64: String
 )
+
+@JsonClass(generateAdapter = true)
+data class EmployeeProfilePhotoDto(
+    @Json(name = "employee_server_id") val employeeServerId: String? = null,
+    @Json(name = "employee_local_id") val employeeLocalId: UUID? = null,
+    @Json(name = "has_jpeg_data") val hasJpegData: Boolean = false,
+    @Json(name = "jpeg_base64") val jpegBase64: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class EmployeeProfilePhotosListResponse(
+    @Json(name = "employee_profile_photos") val employeeProfilePhotos: List<EmployeeProfilePhotoDto>? = null
+) {
+    val items: List<EmployeeProfilePhotoDto> get() = employeeProfilePhotos.orEmpty()
+}

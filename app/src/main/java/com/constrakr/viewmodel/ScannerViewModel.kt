@@ -7,16 +7,15 @@ import com.constrakr.ConsTrakrApp
 import com.constrakr.attendance.AttendancePhotoStore
 import com.constrakr.attendance.VerificationFrameInput
 import com.constrakr.attendance.VerificationResult
-import com.constrakr.face.EnrollmentPhotoEncoder
 import com.constrakr.domain.CheckType
 import com.constrakr.domain.FaceEmbedding
 import com.constrakr.domain.FacePose
 import com.constrakr.face.FacePreprocessor
-import com.constrakr.liveness.Classification
 import com.constrakr.ui.components.ScannerBorderState
 import com.constrakr.scanner.ScannerPhrases
 import com.google.mlkit.vision.common.InputImage
 import com.constrakr.config.ConsTrakrConstants
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -161,12 +160,14 @@ class ScannerViewModel : ViewModel() {
         _checkType.value = type
         container.clockGuard.bootstrapIfNeeded()
         container.verificationEngine.resetSession()
-        container.livenessManager.reset()
+        ConsTrakrApp.instance.miniFasDetector.resetTracker()
         sessionIdentity = null
         sessionFinalized = false
         lastSpokenCaption = null
         frameAnalysisEnabled = true
-        viewModelScope.launch { enrolledCache = container.employeeRepository.getAllEnrolled() }
+        viewModelScope.launch(Dispatchers.IO) {
+            enrolledCache = container.employeeRepository.getAllEnrolled()
+        }
         _isSessionActive.value = true
         updateCaption("Look at the camera", ScannerBorderState.Active)
         _secondaryStatus.value = null
@@ -185,7 +186,7 @@ class ScannerViewModel : ViewModel() {
         lastSpokenCaption = null
         _isSessionActive.value = false
         container.verificationEngine.resetSession()
-        container.livenessManager.reset()
+        ConsTrakrApp.instance.miniFasDetector.resetTracker()
         sessionIdentity = null
         _lastSimilarity.value = null
         _borderState.value = ScannerBorderState.Ready
@@ -214,7 +215,7 @@ class ScannerViewModel : ViewModel() {
         _secondaryStatus.value = null
         _borderState.value = border
         container.verificationEngine.resetSession()
-        container.livenessManager.reset()
+        ConsTrakrApp.instance.miniFasDetector.resetTracker()
         sessionIdentity = null
         viewModelScope.launch {
             lastSpokenCaption = message
@@ -278,18 +279,6 @@ class ScannerViewModel : ViewModel() {
                 return
             }
 
-            val needsChallenge = passive.classification == Classification.UNCERTAIN &&
-                !container.livenessManager.isComplete
-            if (needsChallenge && container.livenessManager.challenge == null) {
-                container.livenessManager.startRandomChallenge()
-            }
-            if (container.livenessManager.challenge != null && !container.livenessManager.isComplete) {
-                container.livenessManager.update(face, area)?.let { challengeText ->
-                    updateCaption(challengeText, ScannerBorderState.Active)
-                }
-                return
-            }
-
             if (enrolledCache.isEmpty()) {
                 enrolledCache = container.employeeRepository.getAllEnrolled()
             }
@@ -312,7 +301,6 @@ class ScannerViewModel : ViewModel() {
                     enrolledEmployees = employees,
                     checkType = checkType,
                     alreadyRecordedToday = already,
-                    activeChallengeIncomplete = needsChallenge && !container.livenessManager.isComplete,
                     sessionIdentityId = sessionIdentity
                 )
             )) {
@@ -335,13 +323,14 @@ class ScannerViewModel : ViewModel() {
                         timestampMillis = container.clockGuard.preferredPunchTimestampMillis()
                     )
                     runCatching {
-                        val crop = FacePreprocessor.makeSquareFaceBitmap(bitmap, face.boundingBox)
-                        val jpeg = EnrollmentPhotoEncoder.encodeJpeg(crop)
+                        val jpeg = com.constrakr.face.JpegImageUtils.encodePoseDisplayFrame(bitmap)
                         AttendancePhotoStore.save(ConsTrakrApp.instance, record.id, jpeg)
                     }
                     container.clockGuard.recordSuccessfulPunch()
                     lastPunchMillis = System.currentTimeMillis()
-                    container.syncCoordinator.syncPending()
+                    viewModelScope.launch {
+                        container.syncCoordinator.syncAttendanceOnly()
+                    }
                     finishWithAnnouncement(
                         message = ScannerPhrases.punchRecorded(result.employeeName, result.checkType),
                         border = ScannerBorderState.Success

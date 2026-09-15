@@ -76,12 +76,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.constrakr.ConsTrakrApp
 import com.constrakr.camera.CameraXManager
-import com.constrakr.camera.toBitmap
+import com.constrakr.camera.toCameraFrame
 import com.constrakr.domain.FacePose
 import com.constrakr.enrollment.EnrollmentScanPhase
 import com.constrakr.ui.components.CameraPermissionGate
 import com.constrakr.ui.components.ConsTrakrCard
 import com.constrakr.ui.components.FaceGuideOverlay
+import com.constrakr.ui.components.ProfilePhotoGuideOverlay
 import com.constrakr.ui.components.ScannerBorderState
 import com.constrakr.ui.components.VoicePrompt
 import com.constrakr.ui.theme.SuccessGreen
@@ -394,7 +395,12 @@ private fun ProfilePhotoStep(
     onRetake: () -> Unit,
     onContinue: () -> Unit
 ) {
-    val previewView = remember { PreviewView(context) }
+    val previewView = remember {
+        PreviewView(context).apply {
+            // COMPATIBLE (TextureView) so getBitmap() matches on-screen preview orientation.
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        }
+    }
     var previewReady by remember { mutableStateOf(false) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     val photoSaved = hasPhoto || previewBitmap != null
@@ -405,12 +411,12 @@ private fun ProfilePhotoStep(
     ) {
         Text("Profile photo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Text(
-            "Take a clear photo for IMS and employee records. Face scan comes in the next step.",
+            "Look at the top of the screen (near the camera), not at the center. Face scan comes next.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            if (photoSaved) "Photo saved — retake if needed" else "Tap Capture when ready",
+            if (photoSaved) "Photo saved — retake if needed" else "Follow the guide, then tap Capture",
             style = MaterialTheme.typography.bodySmall,
             color = if (photoSaved) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -439,11 +445,13 @@ private fun ProfilePhotoStep(
                     camera.bind(previewView)
                     previewView.postDelayed({ previewReady = true }, 600L)
                     onDispose {
+                        camera.onFrame = null
                         camera.shutdown()
                         previewReady = false
                     }
                 }
                 AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+                ProfilePhotoGuideOverlay(modifier = Modifier.fillMaxSize())
             }
         }
         if (photoSaved) {
@@ -465,6 +473,7 @@ private fun ProfilePhotoStep(
         } else {
             Button(
                 onClick = {
+                    // Must match what the user sees in the live preview (rotation + mirror).
                     val bitmap = previewView.bitmap ?: return@Button
                     engine.captureProfilePhoto(bitmap)
                     previewBitmap = bitmap
@@ -590,9 +599,8 @@ private fun FaceScanStep(
                 engine.resetFaceScan()
                 val camera = CameraXManager(context, lifecycleOwner)
                 camera.onFrame = frame@{ proxy ->
-                    val bitmap = proxy.toBitmap() ?: return@frame
-                    val image = InputImage.fromBitmap(bitmap, 0)
-                    scope.launch { engine.processFrame(bitmap, image) }
+                    val frame = proxy.toCameraFrame() ?: return@frame
+                    scope.launch { engine.processFrame(frame.bitmap, frame.inputImage) }
                 }
                 camera.bind(previewView)
                 onDispose { camera.shutdown() }

@@ -10,6 +10,9 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.constrakr.kiosk.KioskController
 import com.constrakr.ui.ConsTrakrNavHost
 import com.constrakr.ui.theme.ConsTrakrTheme
@@ -51,6 +54,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
+        applyKioskSystemBars()
         setContent {
             ConsTrakrTheme(themeSettings = ConsTrakrApp.instance.container.themeSettings) {
                 ConsTrakrNavHost()
@@ -61,9 +65,30 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         ConsTrakrApp.instance.container.kioskMaintenanceSession.refresh()
+        applyKioskSystemBars()
         if (kioskController.isDeviceOwner) {
             kioskController.showSystemStatusBar()
         }
         kioskController.enterKioskIfNeeded(this)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyKioskSystemBars()
+    }
+
+    /** Re-apply after any focus change so Home/Recents stay hidden in kiosk mode. */
+    private fun applyKioskSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (kioskController.isDeviceOwner &&
+            kioskController.isKioskEnabled &&
+            !ConsTrakrApp.instance.container.kioskMaintenanceSession.isActive.value
+        ) {
+            return
+        }
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
     }
 }

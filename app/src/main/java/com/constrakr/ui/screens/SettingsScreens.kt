@@ -17,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -30,16 +29,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.constrakr.ConsTrakrApp
 import com.constrakr.config.AppThemeMode
-import com.constrakr.config.FaceScanSettings
-import com.constrakr.config.FaceScanStep
 import com.constrakr.config.RegistrationPoseSettings
 import com.constrakr.domain.FacePose
 import com.constrakr.kiosk.KioskController
-import com.constrakr.kiosk.KioskSettings
 import com.constrakr.ui.components.AdminGateState
 import com.constrakr.ui.components.ConsTrakrCard
 import com.constrakr.ui.components.SyncPullToRefreshBox
@@ -68,7 +63,7 @@ fun SettingsHubScreen(onBack: () -> Unit, onScanner: () -> Unit, onAdvanced: () 
                 ConsTrakrCard {
                     Text("Configuration")
                     androidx.compose.material3.TextButton(onClick = onScanner, modifier = Modifier.fillMaxWidth()) {
-                        Text("Scanner & registration")
+                        Text("Registration poses")
                     }
                     androidx.compose.material3.TextButton(onClick = onAdvanced, modifier = Modifier.fillMaxWidth()) {
                         Text("Advanced & diagnostics")
@@ -85,14 +80,12 @@ fun SettingsScannerScreen(onBack: () -> Unit) {
     val container = ConsTrakrApp.instance.container
     val adminGate = rememberAdminGate(forcePromptEachTime = true)
     val poseRev by container.registrationPoseSettings.revision.collectAsState()
-    val scanRev by container.faceScanSettings.revision.collectAsState()
     val poseLevel = remember(poseRev) { container.registrationPoseSettings.matchingLevel() }
-    val scanLevel = remember(scanRev) { container.faceScanSettings.matchingLevel() }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scanner settings") },
+                title = { Text("Registration settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -133,23 +126,6 @@ fun SettingsScannerScreen(onBack: () -> Unit) {
                         enabled = pose != FacePose.CENTER || enabled
                     ) {
                         container.registrationPoseSettings.setEnabled(pose, it)
-                    }
-                }
-            }
-            ConsTrakrCard {
-                Text("Face scan steps (attendance)")
-                FaceScanSettings.Level.entries.forEach { level ->
-                    FilterChip(
-                        selected = scanLevel == level,
-                        onClick = { adminGate.withAdmin { container.faceScanSettings.applyLevel(level) } },
-                        label = { Text(level.label) },
-                        modifier = Modifier.padding(end = 4.dp, bottom = 4.dp)
-                    )
-                }
-                FaceScanStep.ordered.forEach { step ->
-                    val enabled = container.faceScanSettings.isEnabled(step)
-                    AdminRowSwitch(adminGate, step.label, enabled) {
-                        container.faceScanSettings.setEnabled(step, it)
                     }
                 }
             }
@@ -206,10 +182,6 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
 
     var kioskEnabled by remember { mutableStateOf(settings.isKioskEnabled) }
     var autoBoot by remember { mutableStateOf(settings.autoStartOnBoot) }
-    var currentPin by remember { mutableStateOf("") }
-    var newPin by remember { mutableStateOf("") }
-    var confirmPin by remember { mutableStateOf("") }
-    var pinMessage by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -283,55 +255,12 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Enable now") }
                     }
-                }
-                ConsTrakrCard {
-                    Text("Device PIN", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                        currentPin,
-                        { if (it.length <= KioskSettings.PIN_LENGTH) currentPin = it.filter { c -> c.isDigit() } },
-                        label = { Text("Current PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                    Text(
+                        "Disabling kiosk or changing these settings requires the 6-digit admin code.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
-                    OutlinedTextField(
-                        newPin,
-                        { if (it.length <= KioskSettings.PIN_LENGTH) newPin = it.filter { c -> c.isDigit() } },
-                        label = { Text("New PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        confirmPin,
-                        { if (it.length <= KioskSettings.PIN_LENGTH) confirmPin = it.filter { c -> c.isDigit() } },
-                        label = { Text("Confirm new PIN") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    pinMessage?.let {
-                        Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
-                    }
-                    Button(
-                        onClick = {
-                            adminGate.withAdmin {
-                                pinMessage = when {
-                                    newPin.length != KioskSettings.PIN_LENGTH -> "New PIN must be 6 digits"
-                                    newPin != confirmPin -> "PINs do not match"
-                                    !settings.verifyMaintenancePin(currentPin) -> "Current PIN is incorrect"
-                                    else -> {
-                                        settings.setMaintenancePin(newPin)
-                                        currentPin = ""
-                                        newPin = ""
-                                        confirmPin = ""
-                                        "PIN updated"
-                                    }
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Update PIN") }
                 }
             }
         }

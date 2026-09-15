@@ -7,7 +7,6 @@ import android.widget.Toast
 
 class ConsTrakrDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
-        KioskSettings(context).ensureDefaultPinIfNeeded()
         Toast.makeText(context, "ConsTrakr device admin enabled", Toast.LENGTH_SHORT).show()
     }
 

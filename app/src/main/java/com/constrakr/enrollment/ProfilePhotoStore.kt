@@ -12,6 +12,7 @@ object ProfilePhotoStore {
         val file = fileFor(context, employeeLocalId)
         file.parentFile?.mkdirs()
         file.writeBytes(jpeg)
+        syncedMarkerFor(context, employeeLocalId).delete()
     }
 
     fun load(context: Context, employeeLocalId: UUID): ByteArray? {
@@ -19,8 +20,18 @@ object ProfilePhotoStore {
         return if (file.exists()) file.readBytes() else null
     }
 
+    fun markSynced(context: Context, employeeLocalId: UUID) {
+        val file = fileFor(context, employeeLocalId)
+        if (!file.exists()) return
+        syncedMarkerFor(context, employeeLocalId).writeText("1")
+    }
+
     fun delete(context: Context, employeeLocalId: String) {
-        runCatching { fileFor(context, UUID.fromString(employeeLocalId)).delete() }
+        runCatching {
+            val id = UUID.fromString(employeeLocalId)
+            fileFor(context, id).delete()
+            syncedMarkerFor(context, id).delete()
+        }
     }
 
     fun pendingEmployeeIds(context: Context): List<String> {
@@ -28,10 +39,18 @@ object ProfilePhotoStore {
         if (!dir.isDirectory) return emptyList()
         return dir.listFiles()
             ?.filter { it.isFile && it.extension == "jpg" }
-            ?.map { it.nameWithoutExtension }
+            ?.mapNotNull { file ->
+                runCatching {
+                    val id = UUID.fromString(file.nameWithoutExtension)
+                    if (syncedMarkerFor(context, id).exists()) null else file.nameWithoutExtension
+                }.getOrNull()
+            }
             ?: emptyList()
     }
 
     private fun fileFor(context: Context, employeeLocalId: UUID): File =
         File(context.filesDir, "$FOLDER/${employeeLocalId}.jpg")
+
+    private fun syncedMarkerFor(context: Context, employeeLocalId: UUID): File =
+        File(context.filesDir, "$FOLDER/${employeeLocalId}.synced")
 }

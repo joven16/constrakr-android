@@ -44,10 +44,27 @@ class EmployeeRepository(
 
     suspend fun getProfilePhoto(employeeId: UUID): ByteArray? =
         ProfilePhotoStore.load(appContext, employeeId)
-            ?: getCenterEnrollmentPhoto(employeeId)
+
+    suspend fun getEnrollmentPhotos(employeeId: UUID): Map<FacePose, ByteArray> {
+        val rows = enrollmentPhotoDao().forEmployee(employeeId.toString())
+        return buildMap {
+            for (row in rows) {
+                val pose = FacePose.entries.firstOrNull { it.raw == row.pose } ?: continue
+                put(pose, row.jpegData)
+            }
+        }
+    }
 
     suspend fun getAllEnrolled(): List<Employee> =
         dao.getAll().map { it.toDomain(secureStore) }.filter { it.isEnrolled }
+
+    suspend fun localIdForServerId(serverId: String): UUID? =
+        dao.getByServerId(serverId.trim())?.id?.let(UUID::fromString)
+
+    suspend fun serverIdToLocalIdMap(): Map<String, String> =
+        dao.getAll().mapNotNull { entity ->
+            entity.serverId?.trim()?.takeIf { it.isNotEmpty() }?.let { it to entity.id }
+        }.toMap()
 
     suspend fun getPending(): List<EmployeeEntity> = dao.getPending()
 

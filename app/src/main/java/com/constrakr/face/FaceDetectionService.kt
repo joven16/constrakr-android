@@ -2,6 +2,7 @@ package com.constrakr.face
 
 import android.graphics.RectF
 import com.constrakr.config.ConsTrakrConstants
+import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
@@ -23,7 +24,13 @@ class FaceDetectionService {
     )
 
     suspend fun detectPrimaryFace(image: InputImage): DetectedFace? {
-        val faces = detector.process(image).await()
+        val faces = try {
+            detector.process(image).await()
+        } catch (_: MlKitException) {
+            return null
+        } catch (_: IllegalStateException) {
+            return null
+        }
         return faces
             .filter { it.trackingId != null || it.boundingBox.width() > 0 }
             .maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }

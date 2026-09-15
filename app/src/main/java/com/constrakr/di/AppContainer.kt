@@ -25,10 +25,17 @@ import com.constrakr.network.ApiClient
 import com.constrakr.recognition.FaceMatchingService
 import com.constrakr.security.SecureFaceTemplateStore
 import com.constrakr.sync.SyncCoordinator
+import com.constrakr.util.NetworkMonitor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class AppContainer(context: Context) {
     private val app = context.applicationContext as ConsTrakrApp
 
+    /** Survives tab switches — use for sign-in / sync started from More. */
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val networkMonitor = NetworkMonitor(context.applicationContext).also { it.start() }
     val database = ConsTrakrDatabase.build(context)
     val secureStore = SecureFaceTemplateStore(context)
     val jobSiteStore = JobSiteStore(context)
