@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
+import android.os.UserManager
 import com.constrakr.MainActivity
 import com.constrakr.util.AppLog
 
@@ -44,6 +45,7 @@ class KioskController(context: Context) {
         runCatching { dpm.setKeyguardDisabled(admin, true) }
             .onFailure { AppLog.w("Keyguard disable failed: ${it.message}") }
         setAsDefaultLauncher(activity)
+        applyAntiTheftRestrictions()
         AppLog.d("Device Owner kiosk policies applied")
     }
 
@@ -95,6 +97,7 @@ class KioskController(context: Context) {
 
     fun restoreKioskPolicies(activity: Activity) {
         if (!isDeviceOwner) return
+        applyAntiTheftRestrictions()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             runCatching { dpm.setStatusBarDisabled(admin, false) }
         }
@@ -127,6 +130,20 @@ class KioskController(context: Context) {
                     DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO
                 )
             }.onFailure { AppLog.w("Lock task features failed: ${it.message}") }
+        }
+    }
+
+    /** Blocks Settings factory reset and safe mode while ConsTrakr is Device Owner. */
+    private fun applyAntiTheftRestrictions() {
+        if (!isDeviceOwner) return
+        listOf(
+            UserManager.DISALLOW_FACTORY_RESET,
+            UserManager.DISALLOW_SAFE_BOOT,
+            UserManager.DISALLOW_ADD_USER,
+            UserManager.DISALLOW_UNINSTALL_APPS,
+        ).forEach { restriction ->
+            runCatching { dpm.addUserRestriction(admin, restriction) }
+                .onFailure { AppLog.w("User restriction failed ($restriction): ${it.message}") }
         }
     }
 

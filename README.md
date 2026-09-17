@@ -151,6 +151,16 @@ Change the maintenance PIN under **More → Settings → Advanced → Maintenanc
 
 Do **not** remove Device Owner for routine Wi‑Fi or diagnostics.
 
+### 7. Anti-theft (Device Owner)
+
+When provisioned as Device Owner, ConsTrakr applies:
+
+- **Factory reset blocked** from Settings (`DISALLOW_FACTORY_RESET`)
+- **Safe mode blocked** (`DISALLOW_SAFE_BOOT`)
+- **Uninstall blocked** for managed apps (`DISALLOW_UNINSTALL_APPS`)
+
+These reduce casual reset/tampering but **do not** stop hardware recovery wipe (Volume + Power). For that layer, enable **Samsung Find My Mobile** with a company Samsung account (Factory Reset Protection), or use **Samsung Knox Guard** for fleet devices.
+
 ---
 
 ## Architecture (mirrors iOS)
