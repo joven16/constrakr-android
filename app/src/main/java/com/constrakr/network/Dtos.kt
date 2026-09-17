@@ -162,7 +162,8 @@ data class DeviceDto(
 @JsonClass(generateAdapter = true)
 data class DevicePlaySoundAckRequest(
     @Json(name = "device_id") val deviceId: String,
-    @Json(name = "request_id") val requestId: String
+    @Json(name = "request_id") val requestId: String,
+    @Json(name = "stage") val stage: String = "completed"
 )
 
 @JsonClass(generateAdapter = true)

@@ -49,16 +49,10 @@ class DeviceCommandService(
         val token = syncCoordinator.authToken ?: return
         val auth = ApiClient.authHeader(token) ?: return
         AppLog.d("Playing remote locate alarm for request=$requestId")
+        ackStage(auth, requestId, STAGE_RINGING)
         alarmPlayer.playFor()
         runCatching {
-            api.ackDevicePlaySound(
-                auth,
-                deviceStore.localId,
-                DevicePlaySoundAckRequest(
-                    deviceId = deviceStore.localId,
-                    requestId = requestId
-                )
-            )
+            ackStage(auth, requestId, STAGE_COMPLETED)
         }.onSuccess {
             prefs.edit().putString(KEY_LAST_PLAY_SOUND_ID, requestId).apply()
             AppLog.d("Play sound acknowledged for request=$requestId")
@@ -67,8 +61,26 @@ class DeviceCommandService(
         }
     }
 
+    private suspend fun ackStage(auth: String, requestId: String, stage: String) {
+        runCatching {
+            api.ackDevicePlaySound(
+                auth,
+                deviceStore.localId,
+                DevicePlaySoundAckRequest(
+                    deviceId = deviceStore.localId,
+                    requestId = requestId,
+                    stage = stage
+                )
+            )
+        }.onFailure {
+            AppLog.w("Play sound $stage ack failed: ${it.message}")
+        }
+    }
+
     companion object {
         private const val PREFS = "constrakr.device.commands"
         private const val KEY_LAST_PLAY_SOUND_ID = "last_play_sound_id"
+        private const val STAGE_RINGING = "ringing"
+        private const val STAGE_COMPLETED = "completed"
     }
 }

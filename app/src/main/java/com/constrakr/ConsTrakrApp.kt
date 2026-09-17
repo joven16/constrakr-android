@@ -90,7 +90,7 @@ class ConsTrakrApp : Application() {
     }
 
     companion object {
-        private const val REMOTE_COMMAND_POLL_MS = 30_000L
+        private const val REMOTE_COMMAND_POLL_MS = 10_000L
 
         lateinit var instance: ConsTrakrApp
             private set
