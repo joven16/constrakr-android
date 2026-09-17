@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -29,20 +30,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.constrakr.ConsTrakrApp
 import com.constrakr.config.AppThemeMode
 import com.constrakr.config.RegistrationPoseSettings
 import com.constrakr.domain.FacePose
+import com.constrakr.device.tracking.DeviceTrackingConfig
+import com.constrakr.kiosk.AppPinSettings
 import com.constrakr.kiosk.KioskController
 import com.constrakr.ui.components.AdminGateState
+import com.constrakr.ui.components.AppPinGateState
 import com.constrakr.ui.components.ConsTrakrCard
 import com.constrakr.ui.components.SyncPullToRefreshBox
 import com.constrakr.ui.components.rememberAdminGate
+import com.constrakr.ui.components.rememberAppPinGate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsHubScreen(onBack: () -> Unit, onScanner: () -> Unit, onAdvanced: () -> Unit) {
+fun SettingsHubScreen(
+    onBack: () -> Unit,
+    onScanner: () -> Unit,
+    onAdvanced: () -> Unit,
+    onDeviceTracking: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -67,6 +78,9 @@ fun SettingsHubScreen(onBack: () -> Unit, onScanner: () -> Unit, onAdvanced: () 
                     }
                     androidx.compose.material3.TextButton(onClick = onAdvanced, modifier = Modifier.fillMaxWidth()) {
                         Text("Advanced & diagnostics")
+                    }
+                    androidx.compose.material3.TextButton(onClick = onDeviceTracking, modifier = Modifier.fillMaxWidth()) {
+                        Text("Device tracking (admin)")
                     }
                 }
             }
@@ -175,13 +189,27 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
     val activity = context as ComponentActivity
     val container = ConsTrakrApp.instance.container
     val adminGate = rememberAdminGate(forcePromptEachTime = true)
+    val appPinGate = rememberAppPinGate(
+        title = "App PIN required",
+        subtitle = "Enter the 6-digit app PIN to change kiosk lock settings. Works offline."
+    )
     val app = ConsTrakrApp.instance
     val kiosk = remember { KioskController(context) }
     val maintenanceActive by container.kioskMaintenanceSession.isActive.collectAsState()
     val settings = container.kioskSettings
+    val appPin = container.appPinSettings
+    val trackingConfig = container.deviceTrackingConfig
 
     var kioskEnabled by remember { mutableStateOf(settings.isKioskEnabled) }
     var autoBoot by remember { mutableStateOf(settings.autoStartOnBoot) }
+    var newPin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf("") }
+    var pinMessage by remember { mutableStateOf<String?>(null) }
+    var pinMessageIsError by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        appPin.ensureDefaultAppPinIfNeeded()
+    }
 
     Scaffold(
         topBar = {
@@ -223,10 +251,37 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
                     )
                 }
             }
+            ConsTrakrCard {
+                Text("Device tracking", style = MaterialTheme.typography.titleMedium)
+                var trackingEnabled by remember { mutableStateOf(trackingConfig.isEnabled) }
+                var normalInterval by remember { mutableStateOf(trackingConfig.normalIntervalMinutes) }
+                var activeInterval by remember { mutableStateOf(trackingConfig.activeIntervalMinutes) }
+                AdminRowSwitch(adminGate, "Enable device tracking", trackingEnabled) {
+                    trackingEnabled = it
+                    trackingConfig.isEnabled = it
+                }
+                Text("Normal interval", style = MaterialTheme.typography.bodySmall)
+                RowIntervalChips(adminGate, normalInterval, listOf(15, 30)) {
+                    normalInterval = it
+                    trackingConfig.normalIntervalMinutes = it
+                }
+                Text("While charging / kiosk active", style = MaterialTheme.typography.bodySmall)
+                RowIntervalChips(adminGate, activeInterval, listOf(15, 30)) {
+                    activeInterval = it
+                    trackingConfig.activeIntervalMinutes = it
+                }
+                Text(
+                    "Reports kiosk hardware status to the server. Does not track workers. " +
+                        "Samsung Find remains the emergency recovery tool.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
             if (kiosk.isDeviceOwner) {
                 ConsTrakrCard {
                     Text("Device lock", style = MaterialTheme.typography.titleMedium)
-                    AdminRowSwitch(adminGate, "Enabled", kioskEnabled) {
+                    AppPinRowSwitch(appPinGate, "Enabled", kioskEnabled) {
                         kioskEnabled = it
                         settings.isKioskEnabled = it
                         if (it && !maintenanceActive) {
@@ -235,14 +290,14 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
                             kiosk.exitKioskForMaintenance(activity)
                         }
                     }
-                    AdminRowSwitch(adminGate, "Auto-launch on boot", autoBoot) {
+                    AppPinRowSwitch(appPinGate, "Auto-launch on boot", autoBoot) {
                         autoBoot = it
                         settings.autoStartOnBoot = it
                     }
                     if (maintenanceActive) {
                         OutlinedButton(
                             onClick = {
-                                adminGate.withAdmin {
+                                appPinGate.withAppPin {
                                     container.kioskMaintenanceSession.lock()
                                     kiosk.restoreKioskPolicies(activity)
                                 }
@@ -251,12 +306,80 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
                         ) { Text("Done") }
                     } else if (!kiosk.isInLockTask(activity) && kioskEnabled) {
                         Button(
-                            onClick = { adminGate.withAdmin { kiosk.enterKioskIfNeeded(activity) } },
+                            onClick = { appPinGate.withAppPin { kiosk.enterKioskIfNeeded(activity) } },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Enable now") }
                     }
                     Text(
-                        "Disabling kiosk or changing these settings requires the 6-digit admin code.",
+                        "Kiosk enable/disable uses the app PIN and works offline.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                ConsTrakrCard {
+                    Text("App PIN", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Stored on this device for kiosk exit and lock settings. Works offline.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    OutlinedTextField(
+                        newPin,
+                        { if (it.length <= AppPinSettings.PIN_LENGTH) newPin = it.filter { c -> c.isDigit() } },
+                        label = { Text("New PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        confirmPin,
+                        { if (it.length <= AppPinSettings.PIN_LENGTH) confirmPin = it.filter { c -> c.isDigit() } },
+                        label = { Text("Confirm new PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    pinMessage?.let {
+                        Text(
+                            it,
+                            color = if (pinMessageIsError) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            adminGate.withAdmin {
+                                when {
+                                    newPin.length != AppPinSettings.PIN_LENGTH -> {
+                                        pinMessageIsError = true
+                                        pinMessage = "New PIN must be 6 digits"
+                                    }
+                                    newPin != confirmPin -> {
+                                        pinMessageIsError = true
+                                        pinMessage = "PINs do not match"
+                                    }
+                                    else -> {
+                                        appPin.setAppPin(newPin)
+                                        newPin = ""
+                                        confirmPin = ""
+                                        pinMessageIsError = false
+                                        pinMessage = "App PIN updated"
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = newPin.length == AppPinSettings.PIN_LENGTH &&
+                            confirmPin.length == AppPinSettings.PIN_LENGTH
+                    ) { Text("Update app PIN") }
+                    Text(
+                        "Requires admin code to change the app PIN.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp)
@@ -283,6 +406,48 @@ private fun AdminRowSwitch(
         Switch(
             checked = checked,
             onCheckedChange = { value -> adminGate.withAdmin { onChecked(value) } },
+            enabled = enabled
+        )
+    }
+}
+
+@Composable
+private fun RowIntervalChips(
+    adminGate: AdminGateState,
+    selected: Int,
+    options: List<Int>,
+    onSelect: (Int) -> Unit
+) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        options.forEach { minutes ->
+            FilterChip(
+                selected = selected == minutes,
+                onClick = { adminGate.withAdmin { onSelect(minutes) } },
+                label = { Text("${minutes} min") }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppPinRowSwitch(
+    appPinGate: AppPinGateState,
+    label: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onChecked: (Boolean) -> Unit
+) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(
+            checked = checked,
+            onCheckedChange = { value -> appPinGate.withAppPin { onChecked(value) } },
             enabled = enabled
         )
     }

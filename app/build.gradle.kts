@@ -13,14 +13,16 @@ android {
         applicationId = "com.constrakr"
         minSdk = 28
         targetSdk = 35
-        versionCode = 67
-        versionName = "1.0.0-alpha67"
+        versionCode = 72
+        versionName = "1.0.0-alpha72"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "RESCUE_PUBLIC_KEY_B64", "\"\"")
     }
 
     buildTypes {
@@ -103,6 +105,7 @@ dependencies {
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
 
     // Location
     implementation("com.google.android.gms:play-services-location:21.3.0")

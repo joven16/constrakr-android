@@ -56,36 +56,101 @@ class SyncCoordinator(
 
     val deviceLocalId: String get() = deviceStore.localId
 
-    val isSignedIn: Boolean get() = !authToken.isNullOrBlank()
+    val authToken: String? get() = prefs.getString(KEY_AUTH_TOKEN, null)
+    val syncUsername: String? get() = prefs.getString(KEY_SYNC_USERNAME, null)
 
-    var authToken: String?
-        get() = prefs.getString(KEY_AUTH_TOKEN, null)
-        private set(value) {
-            prefs.edit().apply {
-                if (value.isNullOrBlank()) remove(KEY_AUTH_TOKEN) else putString(KEY_AUTH_TOKEN, value)
-            }.apply()
-            _authState.value = readAuthState()
-        }
-
-    var syncUsername: String?
-        get() = prefs.getString(KEY_SYNC_USERNAME, null)
-        private set(value) {
-            prefs.edit().apply {
-                if (value.isNullOrBlank()) remove(KEY_SYNC_USERNAME) else putString(KEY_SYNC_USERNAME, value)
-            }.apply()
-            _authState.value = readAuthState()
-        }
+    val isSignedIn: Boolean get() = readAuthState().isSignedIn
 
     fun signOut() {
-        authToken = null
-        syncUsername = null
+        prefs.edit()
+            .remove(KEY_AUTH_TOKEN)
+            .remove(KEY_SYNC_USERNAME)
+            .remove(KEY_TOKEN_EXPIRES_AT)
+            .remove(KEY_SESSION_EXPIRED)
+            .apply()
         _status.value = null
+        refreshAuthState()
     }
 
-    private fun readAuthState(): SyncAuthState = SyncAuthState(
-        isSignedIn = !prefs.getString(KEY_AUTH_TOKEN, null).isNullOrBlank(),
-        username = prefs.getString(KEY_SYNC_USERNAME, null)
-    )
+    fun markSessionExpired() {
+        if (authToken.isNullOrBlank()) return
+        prefs.edit().putBoolean(KEY_SESSION_EXPIRED, true).apply()
+        refreshAuthState()
+    }
+
+    private fun saveSession(token: String, username: String, expiresInSeconds: Int?) {
+        prefs.edit()
+            .putString(KEY_AUTH_TOKEN, token)
+            .putString(KEY_SYNC_USERNAME, username)
+            .putLong(KEY_TOKEN_EXPIRES_AT, computeExpiresAtMillis(expiresInSeconds))
+            .putBoolean(KEY_SESSION_EXPIRED, false)
+            .apply()
+        refreshAuthState()
+    }
+
+    private fun extendSessionOnSuccess() {
+        if (authToken.isNullOrBlank()) return
+        val now = System.currentTimeMillis()
+        val current = prefs.getLong(KEY_TOKEN_EXPIRES_AT, now)
+        val extended = minOf(
+            maxOf(current, now) + SLIDING_EXTENSION_MS,
+            now + MAX_SESSION_MS
+        )
+        prefs.edit()
+            .putLong(KEY_TOKEN_EXPIRES_AT, extended)
+            .putBoolean(KEY_SESSION_EXPIRED, false)
+            .apply()
+        refreshAuthState()
+    }
+
+    private fun migrateLegacySessionExpiry() {
+        if (!prefs.getString(KEY_AUTH_TOKEN, null).isNullOrBlank() &&
+            !prefs.contains(KEY_TOKEN_EXPIRES_AT)
+        ) {
+            prefs.edit()
+                .putLong(KEY_TOKEN_EXPIRES_AT, computeExpiresAtMillis(null))
+                .putBoolean(KEY_SESSION_EXPIRED, false)
+                .apply()
+        }
+    }
+
+    private fun refreshAuthState() {
+        _authState.value = readAuthState()
+    }
+
+    private fun readAuthState(): SyncAuthState {
+        migrateLegacySessionExpiry()
+        val token = prefs.getString(KEY_AUTH_TOKEN, null)
+        val hasSession = !token.isNullOrBlank()
+        val username = prefs.getString(KEY_SYNC_USERNAME, null)
+        val expiresAt = prefs.getLong(KEY_TOKEN_EXPIRES_AT, 0L).takeIf { it > 0L }
+        val flaggedExpired = prefs.getBoolean(KEY_SESSION_EXPIRED, false)
+        val timedOut = hasSession && expiresAt != null && System.currentTimeMillis() >= expiresAt
+        val sessionExpired = hasSession && (flaggedExpired || timedOut)
+        return SyncAuthState(
+            hasSession = hasSession,
+            isSignedIn = hasSession && !sessionExpired,
+            sessionExpired = sessionExpired,
+            username = username,
+            expiresAtMillis = expiresAt
+        )
+    }
+
+    private fun computeExpiresAtMillis(expiresInSeconds: Int?): Long {
+        val now = System.currentTimeMillis()
+        val fromServer = expiresInSeconds?.takeIf { it > 0 }?.let { now + it * 1000L }
+        val floor = now + MIN_SESSION_MS
+        return maxOf(fromServer ?: floor, floor)
+    }
+
+    private fun handleSyncFailure(error: Throwable): Result<Nothing> {
+        if (error is CancellationException) throw error
+        if (error.isAuthFailure()) markSessionExpired()
+        return Result.failure(error)
+    }
+
+    private fun Throwable.isAuthFailure(): Boolean =
+        this is HttpException && code() == 401
 
     suspend fun pingHealth(): Result<String> = withContext(Dispatchers.IO) {
         appResultOf {
@@ -97,11 +162,15 @@ class SyncCoordinator(
     suspend fun login(username: String, password: String): Result<String> = withContext(Dispatchers.IO) {
         appResultOf {
             val r = api.login(com.constrakr.network.LoginRequest(username, password))
-            authToken = r.resolvedToken ?: error("No token in response")
-            syncUsername = username.trim()
+            val token = r.resolvedToken ?: error("No token in response")
+            val name = username.trim()
+            saveSession(token, name, r.expiresIn)
             registerDeviceWithServer()
                 .getOrThrow()
-            "Signed in as $syncUsername"
+            extendSessionOnSuccess()
+            "Signed in as $name"
+        }.onFailure { error ->
+            if (error.isAuthFailure()) markSessionExpired()
         }
     }
 
@@ -161,12 +230,18 @@ class SyncCoordinator(
             _status.value = if (total > 0) "Synced $total attendance item(s)" else "Up to date"
             total
         }.fold(
-            onSuccess = { Result.success(it) },
+            onSuccess = {
+                extendSessionOnSuccess()
+                Result.success(it)
+            },
             onFailure = { error ->
                 if (error is CancellationException) throw error
                 AppLog.e("Attendance sync failed", error)
-                _status.value = error.message ?: "Sync failed"
-                Result.failure(error)
+                _status.value = when {
+                    error.isAuthFailure() -> "Session expired — sign in again under More"
+                    else -> error.message ?: "Sync failed"
+                }
+                handleSyncFailure(error)
             }
         )
     }
@@ -225,12 +300,18 @@ class SyncCoordinator(
 
             _status.value = if (total > 0) "Synced $total item(s)" else "Up to date"
         }.fold(
-            onSuccess = { Result.success(total) },
+            onSuccess = {
+                extendSessionOnSuccess()
+                Result.success(total)
+            },
             onFailure = { error ->
                 if (error is CancellationException) throw error
                 AppLog.e("Sync failed", error)
-                _status.value = error.message ?: "Sync failed"
-                Result.failure(error)
+                _status.value = when {
+                    error.isAuthFailure() -> "Session expired — sign in again under More"
+                    else -> error.message ?: "Sync failed"
+                }
+                handleSyncFailure(error)
             }
         )
     }
@@ -273,12 +354,18 @@ class SyncCoordinator(
             _status.value = if (total > 0) "Uploaded $total registration item(s)" else "Registration uploaded"
             total
         }.fold(
-            onSuccess = { Result.success(it) },
+            onSuccess = {
+                extendSessionOnSuccess()
+                Result.success(it)
+            },
             onFailure = { error ->
                 if (error is CancellationException) throw error
                 AppLog.e("Registration sync failed", error)
-                _status.value = error.message ?: "Registration sync failed"
-                Result.failure(error)
+                _status.value = when {
+                    error.isAuthFailure() -> "Session expired — sign in again under More"
+                    else -> error.message ?: "Registration sync failed"
+                }
+                handleSyncFailure(error)
             }
         )
     }
@@ -613,13 +700,23 @@ class SyncCoordinator(
     }
 
     data class SyncAuthState(
-        val isSignedIn: Boolean,
-        val username: String?
+        val hasSession: Boolean = false,
+        val isSignedIn: Boolean = false,
+        val sessionExpired: Boolean = false,
+        val username: String? = null,
+        val expiresAtMillis: Long? = null
     )
 
     companion object {
         private const val KEY_AUTH_TOKEN = "auth_token"
         private const val KEY_SYNC_USERNAME = "sync_username"
+        private const val KEY_TOKEN_EXPIRES_AT = "auth_token_expires_at"
+        private const val KEY_SESSION_EXPIRED = "session_expired"
+        /** At least 90 days on device even if server JWT is shorter. */
+        private const val MIN_SESSION_MS = 90L * 24 * 60 * 60 * 1000
+        /** Each successful sync pushes expiry forward. */
+        private const val SLIDING_EXTENSION_MS = 30L * 24 * 60 * 60 * 1000
+        private const val MAX_SESSION_MS = 365L * 24 * 60 * 60 * 1000
     }
 }
 

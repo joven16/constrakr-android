@@ -99,7 +99,53 @@ fun MoreScreen(
 
         ConsTrakrCard {
             Text("Sync Account", style = MaterialTheme.typography.titleMedium)
-            if (authState.isSignedIn) {
+            if (authState.sessionExpired) {
+                Text(
+                    "Session expired — please sign in again.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                if (!authState.username.isNullOrBlank()) {
+                    Text(
+                        "Last signed in as ${authState.username}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                OutlinedTextField(
+                    value = user.ifBlank { authState.username.orEmpty() },
+                    onValueChange = { user = it },
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+                OutlinedTextField(
+                    value = pass,
+                    onValueChange = { pass = it },
+                    label = { Text("Password") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+                Button(onClick = {
+                    container.applicationScope.launch {
+                        container.syncCoordinator.login(
+                            user.ifBlank { authState.username.orEmpty() },
+                            pass
+                        )
+                            .onSuccess { message = it }
+                            .onFailure { error ->
+                                if (!error.isUserCancellation()) message = error.message
+                            }
+                    }
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Sign in again")
+                }
+            } else if (authState.isSignedIn) {
                 Text(
                     "Signed in as ${authState.username ?: "Admin"}",
                     style = MaterialTheme.typography.bodyMedium,
@@ -178,7 +224,11 @@ fun MoreScreen(
             }
             syncStatus?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
             Text(
-                "Use your sync account to upload attendance and employees to the server.",
+                if (authState.isSignedIn) {
+                    "Sync session stays signed in on this device. Sign in again only if expired."
+                } else {
+                    "Use your sync account to upload attendance and employees to the server."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)

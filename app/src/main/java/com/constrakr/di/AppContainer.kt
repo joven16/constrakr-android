@@ -16,7 +16,13 @@ import com.constrakr.database.EmployeeRepository
 import com.constrakr.domain.DeviceStore
 import com.constrakr.domain.JobSiteStore
 import com.constrakr.domain.SiteGeofenceSettings
+import com.constrakr.device.tracking.DeviceTrackingConfig
+import com.constrakr.device.tracking.DeviceTrackingMetadataStore
+import com.constrakr.device.tracking.DeviceTrackingRepository
+import com.constrakr.device.tracking.DeviceTrackingService
 import com.constrakr.enrollment.EnrollmentEngine
+import com.constrakr.kiosk.AppPinSettings
+import com.constrakr.kiosk.KioskController
 import com.constrakr.kiosk.KioskMaintenanceSession
 import com.constrakr.kiosk.KioskSettings
 import com.constrakr.face.FaceDetectionService
@@ -41,6 +47,7 @@ class AppContainer(context: Context) {
     val jobSiteStore = JobSiteStore(context)
     val deviceStore = DeviceStore(context)
     val geofenceSettings = SiteGeofenceSettings(context, jobSiteStore)
+    val appPinSettings = AppPinSettings(context)
     val kioskSettings = KioskSettings(context)
     val kioskMaintenanceSession = KioskMaintenanceSession(context)
     val accessSession = AppAccessSession(jobSiteStore, deviceStore)
@@ -58,6 +65,27 @@ class AppContainer(context: Context) {
     val locationGate = SiteLocationGate(context, jobSiteStore, geofenceSettings)
     val syncCoordinator = SyncCoordinator(
         context, api, employeeRepository, attendanceRepository, jobSiteStore, deviceStore
+    )
+    val deviceTrackingConfig = DeviceTrackingConfig(context)
+    val deviceTrackingMetadata = DeviceTrackingMetadataStore(context)
+    private val kioskControllerRef = KioskController(context)
+    val deviceTrackingService = DeviceTrackingService(
+        context.applicationContext,
+        deviceStore,
+        jobSiteStore,
+        networkMonitor,
+        kioskSettings,
+        kioskMaintenanceSession,
+        kioskControllerRef
+    )
+    val deviceTrackingRepository = DeviceTrackingRepository(
+        context.applicationContext,
+        database.deviceHeartbeatDao(),
+        deviceTrackingConfig,
+        deviceTrackingService,
+        deviceTrackingMetadata,
+        api,
+        syncCoordinator
     )
     val adminCodeService = AdminCodeService(api, deviceStore, accessSession, syncCoordinator)
     val faceDetection = FaceDetectionService()

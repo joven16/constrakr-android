@@ -44,7 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.constrakr.ConsTrakrApp
 import com.constrakr.MainActivity
 import com.constrakr.kiosk.KioskController
-import com.constrakr.ui.components.AdminCodeSheet
+import com.constrakr.ui.components.AppPinSheet
 import com.constrakr.ui.screens.DashboardScreen
 import com.constrakr.ui.screens.DtrScreen
 import com.constrakr.ui.screens.EmployeeDetailScreen
@@ -55,6 +55,7 @@ import com.constrakr.ui.screens.JobSiteEditorScreen
 import com.constrakr.ui.screens.JobSitesListScreen
 import com.constrakr.ui.screens.MoreScreen
 import com.constrakr.ui.screens.ScannerScreen
+import com.constrakr.ui.screens.DeviceTrackingDiagnosticsScreen
 import com.constrakr.ui.screens.SettingsAdvancedScreen
 import com.constrakr.ui.screens.SettingsAppearanceScreen
 import com.constrakr.ui.screens.SettingsHubScreen
@@ -79,6 +80,7 @@ private sealed class Overlay {
     data object Settings : Overlay()
     data object SettingsScanner : Overlay()
     data object SettingsAdvanced : Overlay()
+    data object DeviceTrackingDiagnostics : Overlay()
     data object SettingsAppearance : Overlay()
     data class EmployeeDetail(val id: UUID) : Overlay()
     data class EmployeeEdit(val id: UUID) : Overlay()
@@ -95,7 +97,7 @@ fun ConsTrakrNavHost() {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
     var logoTaps by rememberSaveable { mutableIntStateOf(0) }
-    var showMaintenanceAdmin by remember { mutableStateOf(false) }
+    var showMaintenancePin by remember { mutableStateOf(false) }
     val maintenanceActive by container.kioskMaintenanceSession.isActive.collectAsState()
 
     val kioskController = (activity as? MainActivity)?.kioskController ?: kiosk
@@ -122,7 +124,7 @@ fun ConsTrakrNavHost() {
         if (logoTaps >= 7) {
             logoTaps = 0
             if (kiosk.isDeviceOwner) {
-                showMaintenanceAdmin = true
+                showMaintenancePin = true
             }
         }
     }
@@ -131,7 +133,7 @@ fun ConsTrakrNavHost() {
         kioskController.lockDeviceScreen()
     }
 
-    BackHandler(enabled = showMaintenanceAdmin) { showMaintenanceAdmin = false }
+    BackHandler(enabled = showMaintenancePin) { showMaintenancePin = false }
 
     Box(
         Modifier
@@ -139,15 +141,15 @@ fun ConsTrakrNavHost() {
             .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
-        AdminCodeSheet(
-            visible = showMaintenanceAdmin,
-            onDismiss = { showMaintenanceAdmin = false },
+        AppPinSheet(
+            visible = showMaintenancePin,
+            onDismiss = { showMaintenancePin = false },
             onVerified = {
                 container.kioskMaintenanceSession.unlock()
                 kiosk.exitKioskForMaintenance(activity)
             },
             title = "Exit kiosk mode",
-            subtitle = "Enter the 6-digit admin code for temporary access (15 minutes)."
+            subtitle = "Enter the 6-digit app PIN for temporary access (15 minutes). Works offline."
         )
 
         when (val o = overlay) {
@@ -178,8 +180,13 @@ fun ConsTrakrNavHost() {
                 SettingsHubScreen(
                     onBack = { overlay = Overlay.None },
                     onScanner = { overlay = Overlay.SettingsScanner },
-                    onAdvanced = { overlay = Overlay.SettingsAdvanced }
+                    onAdvanced = { overlay = Overlay.SettingsAdvanced },
+                    onDeviceTracking = { overlay = Overlay.DeviceTrackingDiagnostics }
                 )
+            }
+            Overlay.DeviceTrackingDiagnostics -> {
+                BackHandler { overlay = Overlay.Settings }
+                DeviceTrackingDiagnosticsScreen(onBack = { overlay = Overlay.Settings })
             }
             Overlay.SettingsScanner -> {
                 BackHandler { overlay = Overlay.Settings }

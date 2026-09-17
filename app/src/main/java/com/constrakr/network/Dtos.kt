@@ -19,7 +19,8 @@ data class LoginRequest(
 @JsonClass(generateAdapter = true)
 data class LoginResponse(
     @Json(name = "access_token") val accessToken: String?,
-    @Json(name = "token") val token: String?
+    @Json(name = "token") val token: String?,
+    @Json(name = "expires_in") val expiresIn: Int? = null
 ) {
     val resolvedToken: String? get() = accessToken ?: token
 }
@@ -160,6 +161,24 @@ data class DeviceRegisterRequest(
     @Json(name = "local_id") val localId: UUID,
     @Json(name = "name") val name: String,
     @Json(name = "app_version") val appVersion: String
+)
+
+@JsonClass(generateAdapter = true)
+data class DeviceHeartbeatRequest(
+    @Json(name = "device_id") val deviceId: String,
+    @Json(name = "site_id") val siteId: String?,
+    @Json(name = "latitude") val latitude: Double?,
+    @Json(name = "longitude") val longitude: Double?,
+    @Json(name = "accuracy_meters") val accuracyMeters: Float?,
+    @Json(name = "battery_percent") val batteryPercent: Int,
+    @Json(name = "is_charging") val isCharging: Boolean,
+    @Json(name = "network_type") val networkType: String?,
+    @Json(name = "is_online") val isOnline: Boolean,
+    @Json(name = "is_kiosk_mode_active") val isKioskModeActive: Boolean,
+    @Json(name = "device_model") val deviceModel: String,
+    @Json(name = "android_version") val androidVersion: String,
+    @Json(name = "app_version") val appVersion: String,
+    @Json(name = "timestamp") val timestamp: Long
 )
 
 @JsonClass(generateAdapter = true)

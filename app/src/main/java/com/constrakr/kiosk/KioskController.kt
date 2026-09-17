@@ -19,6 +19,7 @@ class KioskController(context: Context) {
     private val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val admin = ComponentName(appContext, ConsTrakrDeviceAdminReceiver::class.java)
     private val settings = KioskSettings(appContext)
+    private val appPinSettings = AppPinSettings(appContext)
     private val maintenance = KioskMaintenanceSession(appContext)
 
     val isDeviceOwner: Boolean
@@ -33,6 +34,7 @@ class KioskController(context: Context) {
     /** One-time Device Owner provisioning — lock task packages, home app, keyguard. */
     fun configureDeviceOwner(activity: Activity) {
         if (!isDeviceOwner) return
+        appPinSettings.ensureDefaultAppPinIfNeeded()
         dpm.setLockTaskPackages(admin, arrayOf(appContext.packageName))
         applyLockTaskFeatures()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {

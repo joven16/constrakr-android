@@ -6,12 +6,14 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.constrakr.liveness.MiniFasLivenessDetector
 import com.constrakr.recognition.AdaFaceRecognizer
+import com.constrakr.device.tracking.DeviceTrackingScheduler
 import com.constrakr.sync.SyncWorker
 import com.constrakr.util.AppLog
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class ConsTrakrApp : Application() {
@@ -31,6 +33,7 @@ class ConsTrakrApp : Application() {
         container = com.constrakr.di.AppContainer(this)
         migrateLegacyPosePhotos()
         scheduleBackgroundSync()
+        scheduleDeviceTracking()
         registerDeviceIfSignedIn()
     }
 
@@ -60,6 +63,15 @@ class ConsTrakrApp : Application() {
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )
+    }
+
+    private fun scheduleDeviceTracking() {
+        DeviceTrackingScheduler.schedule(this, container.deviceTrackingConfig)
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+            container.deviceTrackingConfig.revision.collect {
+                DeviceTrackingScheduler.schedule(this@ConsTrakrApp, container.deviceTrackingConfig)
+            }
+        }
     }
 
     companion object {

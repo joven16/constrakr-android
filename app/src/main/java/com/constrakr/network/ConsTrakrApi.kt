@@ -35,6 +35,13 @@ interface ConsTrakrApi {
         @Body body: DeviceRegisterRequest
     ): DeviceDto
 
+    @POST("/constrakr-api/devices/heartbeat")
+    suspend fun postDeviceHeartbeat(
+        @Header("Authorization") auth: String,
+        @Header("X-Device-Local-Id") deviceId: String,
+        @Body body: DeviceHeartbeatRequest
+    ): DeviceDto
+
     @GET("/constrakr-api/employees")
     suspend fun getEmployees(
         @Header("Authorization") auth: String,

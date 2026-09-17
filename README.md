@@ -25,8 +25,9 @@ Native Android port of [ConsTrakr iOS](https://github.com/joven16/constrakr).
 | 4 — MiniFASNet + liveness | Code ready · **models not in repo** |
 | 5 — Enrollment + attendance UI | Done (Compose tabs, Scanner, Enrollment) |
 | 6 — Room + API + sync | Done (roster pull, push employees/embeddings/attendance) |
-| 7 — Kiosk + maintenance mode | Done (Device Owner, Lock Task, 7× PIN maintenance) |
-| 8 — Field device tuning | Galaxy A17 (production) · Galaxy S8 (legacy dev) |
+| 7 — Kiosk + maintenance mode | Done (Device Owner, Lock Task, App PIN + admin code) |
+| 8 — Device fleet tracking | Done (WorkManager heartbeat, Room queue, admin diagnostics) |
+| 9 — Field device tuning | Galaxy A17 (production) · Galaxy S8 (legacy dev) |
 
 ---
 
@@ -61,6 +62,15 @@ Install on device:
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+### Device fleet tracking
+
+Admin-only (Settings → Advanced, after admin code):
+
+- Toggle **Device tracking** and set normal/active heartbeat intervals (minimum 15 minutes).
+- Open **Device tracking diagnostics** from the Settings hub for last location/sync, pending queue count, and manual **Collect & sync now**.
+
+Heartbeats are queued locally when offline and uploaded via `POST /constrakr-api/devices/heartbeat` when signed in. Location is one-shot / last-known only (same permissions as site geofence). Disabled by default.
 
 ---
 
