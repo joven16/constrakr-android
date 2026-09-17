@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,7 @@ import com.constrakr.ui.components.ConsTrakrCard
 import com.constrakr.ui.components.SiteHeader
 import com.constrakr.ui.components.rememberAdminGate
 import com.constrakr.util.isUserCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -50,6 +52,13 @@ fun MoreScreen(
     val syncStatus by container.syncCoordinator.status.collectAsState()
     val authState by container.syncCoordinator.authState.collectAsState()
     val session by container.accessSession.state.collectAsState()
+    val isAdminUnlocked = session.isActive()
+    LaunchedEffect(session.unlockedUntilMillis) {
+        val until = session.unlockedUntilMillis ?: return@LaunchedEffect
+        val wait = until - System.currentTimeMillis()
+        if (wait > 0) delay(wait)
+        container.accessSession.lock()
+    }
     var user by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
@@ -78,11 +87,11 @@ fun MoreScreen(
 
         ConsTrakrCard {
             RowItem(
-                title = if (container.accessSession.isAdminUnlocked) "Admin unlocked" else "Unlock admin",
+                title = if (isAdminUnlocked) "Admin unlocked" else "Unlock admin",
                 subtitle = session.unlockedOperatorName ?: "6-digit code · 15 min",
-                icon = if (container.accessSession.isAdminUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
+                icon = if (isAdminUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
                 onClick = {
-                    if (container.accessSession.isAdminUnlocked) {
+                    if (isAdminUnlocked) {
                         container.accessSession.lock()
                         message = "Admin locked"
                     } else {
@@ -90,8 +99,11 @@ fun MoreScreen(
                     }
                 }
             )
-            if (container.accessSession.isAdminUnlocked) {
-                Button(onClick = { container.accessSession.lock() }, modifier = Modifier.fillMaxWidth()) {
+            if (isAdminUnlocked) {
+                Button(onClick = {
+                    container.accessSession.lock()
+                    message = "Admin locked"
+                }, modifier = Modifier.fillMaxWidth()) {
                     Text("Lock admin now")
                 }
             }
@@ -239,13 +251,13 @@ fun MoreScreen(
             RowItem("Appearance", "Theme", onClick = onAppearance)
         }
 
-        if (container.accessSession.canManageJobSites()) {
+        if (isAdminUnlocked) {
             ConsTrakrCard {
                 RowItem("Job Sites", "GPS pins & default site", onClick = onJobSites)
             }
         }
 
-        if (container.accessSession.canAccessAdminSettings()) {
+        if (isAdminUnlocked) {
             ConsTrakrCard {
                 RowItem("Settings", "Scanner & diagnostics", onClick = onSettings)
             }

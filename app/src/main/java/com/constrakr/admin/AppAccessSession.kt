@@ -94,7 +94,12 @@ class AppAccessSession(
         val unlockedUntilMillis: Long? = null,
         val unlockedOperatorName: String? = null,
         val adminViewSiteId: UUID? = null
-    )
+    ) {
+        fun isActive(nowMillis: Long = System.currentTimeMillis()): Boolean {
+            val until = unlockedUntilMillis ?: return false
+            return nowMillis < until
+        }
+    }
 
     companion object {
         private const val UNLOCK_MS = 15 * 60 * 1000L
