@@ -153,7 +153,16 @@ data class DeviceDto(
     @Json(name = "assigned_user_name") val assignedUserName: String?,
     @Json(name = "is_blocked") val isBlocked: Boolean?,
     @Json(name = "blocked_reason") val blockedReason: String?,
-    @Json(name = "admin_code_required") val adminCodeRequired: Boolean?
+    @Json(name = "admin_code_required") val adminCodeRequired: Boolean?,
+    @Json(name = "play_sound_request_id") val playSoundRequestId: String? = null,
+    @Json(name = "play_sound_requested_at") val playSoundRequestedAt: String? = null,
+    @Json(name = "play_sound_played_at") val playSoundPlayedAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DevicePlaySoundAckRequest(
+    @Json(name = "device_id") val deviceId: String,
+    @Json(name = "request_id") val requestId: String
 )
 
 @JsonClass(generateAdapter = true)

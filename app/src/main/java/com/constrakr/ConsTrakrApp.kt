@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class ConsTrakrApp : Application() {
@@ -35,6 +37,7 @@ class ConsTrakrApp : Application() {
         scheduleBackgroundSync()
         scheduleDeviceTracking()
         registerDeviceIfSignedIn()
+        startRemoteCommandPolling()
     }
 
     private fun migrateLegacyPosePhotos() {
@@ -51,8 +54,20 @@ class ConsTrakrApp : Application() {
     private fun registerDeviceIfSignedIn() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             container.syncCoordinator.registerDeviceWithServer()
-                .onSuccess { AppLog.d("Startup device registration OK") }
+                .onSuccess {
+                    AppLog.d("Startup device registration OK")
+                    container.deviceCommandService.pollAndExecute()
+                }
                 .onFailure { AppLog.w("Startup device registration skipped: ${it.message}") }
+        }
+    }
+
+    private fun startRemoteCommandPolling() {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            while (isActive) {
+                container.deviceCommandService.pollAndExecute()
+                delay(REMOTE_COMMAND_POLL_MS)
+            }
         }
     }
 
@@ -75,6 +90,8 @@ class ConsTrakrApp : Application() {
     }
 
     companion object {
+        private const val REMOTE_COMMAND_POLL_MS = 30_000L
+
         lateinit var instance: ConsTrakrApp
             private set
     }

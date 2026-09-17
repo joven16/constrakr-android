@@ -16,6 +16,8 @@ import com.constrakr.database.EmployeeRepository
 import com.constrakr.domain.DeviceStore
 import com.constrakr.domain.JobSiteStore
 import com.constrakr.domain.SiteGeofenceSettings
+import com.constrakr.device.DeviceCommandService
+import com.constrakr.device.DeviceFindAlarmPlayer
 import com.constrakr.device.tracking.DeviceTrackingConfig
 import com.constrakr.device.tracking.DeviceTrackingMetadataStore
 import com.constrakr.device.tracking.DeviceTrackingRepository
@@ -66,6 +68,14 @@ class AppContainer(context: Context) {
     val syncCoordinator = SyncCoordinator(
         context, api, employeeRepository, attendanceRepository, jobSiteStore, deviceStore
     )
+    val deviceFindAlarmPlayer = DeviceFindAlarmPlayer(context.applicationContext)
+    val deviceCommandService = DeviceCommandService(
+        context.applicationContext,
+        api,
+        syncCoordinator,
+        deviceStore,
+        deviceFindAlarmPlayer
+    )
     val deviceTrackingConfig = DeviceTrackingConfig(context)
     val deviceTrackingMetadata = DeviceTrackingMetadataStore(context)
     private val kioskControllerRef = KioskController(context)
@@ -85,7 +95,8 @@ class AppContainer(context: Context) {
         deviceTrackingService,
         deviceTrackingMetadata,
         api,
-        syncCoordinator
+        syncCoordinator,
+        deviceCommandService
     )
     val adminCodeService = AdminCodeService(api, deviceStore, accessSession, syncCoordinator)
     val faceDetection = FaceDetectionService()

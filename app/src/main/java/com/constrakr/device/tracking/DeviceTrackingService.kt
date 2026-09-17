@@ -23,7 +23,7 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Collects kiosk device telemetry. Does not run continuous GPS. */
+/** Collects kiosk device telemetry. GPS fixes must be ≤30 m accuracy; no continuous GPS. */
 class DeviceTrackingService(
     private val context: Context,
     private val deviceStore: DeviceStore,
@@ -83,12 +83,17 @@ class DeviceTrackingService(
         if (!hasLocationPermission()) return null
         val client = LocationServices.getFusedLocationProviderClient(context)
         val last = runCatching { client.lastLocation.await() }.getOrNull()
-        if (last != null && locationAgeMs(last) <= STALE_LOCATION_MS) return last
+        if (last != null && locationAgeMs(last) <= STALE_LOCATION_MS) {
+            last.toHeartbeatFix()?.let { return it }
+        }
 
         val token = CancellationTokenSource()
-        return withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
-            client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, token.token).await()
-        } ?: last
+        val current = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
+            client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, token.token).await()
+        }?.toHeartbeatFix()
+        if (current != null) return current
+
+        return null
     }
 
     private fun hasLocationPermission(): Boolean =
@@ -120,7 +125,7 @@ class DeviceTrackingService(
     }
 
     companion object {
-        private const val LOCATION_TIMEOUT_MS = 8_000L
-        private const val STALE_LOCATION_MS = 15 * 60_000L
+        private const val LOCATION_TIMEOUT_MS = 12_000L
+        private const val STALE_LOCATION_MS = 5 * 60_000L
     }
 }

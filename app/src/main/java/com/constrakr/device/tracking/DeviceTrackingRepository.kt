@@ -1,6 +1,7 @@
 package com.constrakr.device.tracking
 
 import android.content.Context
+import com.constrakr.device.DeviceCommandService
 import com.constrakr.network.ApiClient
 import com.constrakr.network.ConsTrakrApi
 import com.constrakr.network.DeviceHeartbeatRequest
@@ -17,7 +18,8 @@ class DeviceTrackingRepository(
     private val collector: DeviceTrackingService,
     private val metadata: DeviceTrackingMetadataStore,
     private val api: ConsTrakrApi,
-    private val syncCoordinator: SyncCoordinator
+    private val syncCoordinator: SyncCoordinator,
+    private val deviceCommandService: DeviceCommandService
 ) {
     suspend fun collectAndQueueIfDue(force: Boolean = false): Result<Long?> = withContext(Dispatchers.IO) {
         if (!config.isEnabled) return@withContext Result.success(null)
@@ -55,11 +57,12 @@ class DeviceTrackingRepository(
             val payload = row.toRequest()
             runCatching {
                 api.postDeviceHeartbeat(auth, deviceId, payload)
-            }.onSuccess {
+            }.onSuccess { dto ->
                 val at = System.currentTimeMillis()
                 dao.markSynced(row.id, DeviceHeartbeatEntity.SYNC_SYNCED, at)
                 metadata.lastSuccessfulSyncMillis = at
                 synced++
+                deviceCommandService.handleDeviceDto(dto)
             }.onFailure { error ->
                 AppLog.w("Heartbeat sync failed: ${error.message}")
                 if (error is HttpException && error.code() == 401) {

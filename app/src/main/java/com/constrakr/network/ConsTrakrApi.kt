@@ -42,6 +42,13 @@ interface ConsTrakrApi {
         @Body body: DeviceHeartbeatRequest
     ): DeviceDto
 
+    @POST("/constrakr-api/devices/play-sound/ack")
+    suspend fun ackDevicePlaySound(
+        @Header("Authorization") auth: String,
+        @Header("X-Device-Local-Id") deviceId: String,
+        @Body body: DevicePlaySoundAckRequest
+    ): DeviceDto
+
     @GET("/constrakr-api/employees")
     suspend fun getEmployees(
         @Header("Authorization") auth: String,

@@ -92,6 +92,11 @@ fun DeviceTrackingDiagnosticsScreen(onBack: () -> Unit) {
             )
             ConsTrakrCard {
                 Text("Location (admin)", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Only GPS fixes within 30 m accuracy are uploaded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 val lat = meta.lastLocationLat
                 val lng = meta.lastLocationLng
                 Text(
