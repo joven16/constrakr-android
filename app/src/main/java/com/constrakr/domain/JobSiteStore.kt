@@ -68,8 +68,10 @@ class JobSiteStore(context: Context) {
     }
 
     fun applyRemoteCatalog(remote: List<JobSite>) {
+        val pending = pendingUploadIds
         val local = loadSites().associateBy { it.id }.toMutableMap()
         for (r in remote) {
+            if (r.id in pending) continue
             val existing = local[r.id]
             if (existing == null || r.updatedAtMillis >= existing.updatedAtMillis) {
                 local[r.id] = r

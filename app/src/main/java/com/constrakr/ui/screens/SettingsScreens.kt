@@ -271,7 +271,7 @@ fun SettingsAdvancedScreen(onBack: () -> Unit) {
                     trackingConfig.activeIntervalMinutes = it
                 }
                 Text(
-                    "Reports kiosk hardware status to the server. Phone GPS is uploaded only when accuracy is within 30 m. " +
+                    "Reports kiosk hardware status to the server. Phone GPS is uploaded only when accuracy is within 5 m. " +
                         "Samsung Find remains the emergency recovery tool.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

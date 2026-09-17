@@ -6,11 +6,11 @@ import org.junit.Test
 
 class DeviceTrackingLocationTest {
     @Test
-    fun isHeartbeatLocationAcceptable_allowsUpTo30Meters() {
-        assertTrue(isHeartbeatLocationAcceptable(30f))
-        assertTrue(isHeartbeatLocationAcceptable(12.5f))
-        assertFalse(isHeartbeatLocationAcceptable(30.1f))
-        assertFalse(isHeartbeatLocationAcceptable(100f))
+    fun isHeartbeatLocationAcceptable_allowsUpTo5Meters() {
+        assertTrue(isHeartbeatLocationAcceptable(5f))
+        assertTrue(isHeartbeatLocationAcceptable(3.2f))
+        assertFalse(isHeartbeatLocationAcceptable(5.1f))
+        assertFalse(isHeartbeatLocationAcceptable(30f))
         assertFalse(isHeartbeatLocationAcceptable(null))
         assertFalse(isHeartbeatLocationAcceptable(0f))
         assertFalse(isHeartbeatLocationAcceptable(-1f))

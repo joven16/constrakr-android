@@ -263,3 +263,21 @@ data class EmployeeProfilePhotosListResponse(
 ) {
     val items: List<EmployeeProfilePhotoDto> get() = employeeProfilePhotos.orEmpty()
 }
+
+@JsonClass(generateAdapter = true)
+data class FaceEnrollmentPhotoDto(
+    @Json(name = "server_id") val serverId: String? = null,
+    @Json(name = "local_id") val localId: UUID? = null,
+    @Json(name = "employee_server_id") val employeeServerId: String? = null,
+    @Json(name = "employee_local_id") val employeeLocalId: UUID? = null,
+    @Json(name = "pose") val pose: String? = null,
+    @Json(name = "has_jpeg_data") val hasJpegData: Boolean = false,
+    @Json(name = "jpeg_base64") val jpegBase64: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class FaceEnrollmentPhotosListResponse(
+    @Json(name = "face_enrollment_photos") val faceEnrollmentPhotos: List<FaceEnrollmentPhotoDto>? = null
+) {
+    val items: List<FaceEnrollmentPhotoDto> get() = faceEnrollmentPhotos.orEmpty()
+}

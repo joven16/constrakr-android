@@ -111,6 +111,14 @@ interface ConsTrakrApi {
         @Body body: FaceEmbeddingPostRequest
     ): Map<String, String>
 
+    @GET("/constrakr-api/face-enrollment-photos")
+    suspend fun getFaceEnrollmentPhotos(
+        @Header("Authorization") auth: String,
+        @Header("X-Device-Local-Id") deviceId: String,
+        @Query("include_media") includeMedia: String = "1",
+        @Query("employee_server_id") employeeServerId: String? = null
+    ): FaceEnrollmentPhotosListResponse
+
     @POST("/constrakr-api/face-enrollment-photos")
     suspend fun postFaceEnrollmentPhoto(
         @Header("Authorization") auth: String,

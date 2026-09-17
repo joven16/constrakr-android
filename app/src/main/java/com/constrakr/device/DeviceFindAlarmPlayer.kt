@@ -16,9 +16,12 @@ class DeviceFindAlarmPlayer(context: Context) {
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var player: MediaPlayer? = null
     private var savedAlarmVolume: Int? = null
+    @Volatile
+    private var stopRequested = false
 
     suspend fun playFor(durationMs: Long = DEFAULT_DURATION_MS) {
         stop()
+        stopRequested = false
         val targetVolume = forceMaxAlarmVolume()
         runCatching {
             player = MediaPlayer().apply {
@@ -36,18 +39,27 @@ class DeviceFindAlarmPlayer(context: Context) {
                 start()
             }
             val startedAt = System.currentTimeMillis()
-            while (coroutineContext.isActive && System.currentTimeMillis() - startedAt < durationMs) {
+            while (
+                coroutineContext.isActive &&
+                !stopRequested &&
+                System.currentTimeMillis() - startedAt < durationMs
+            ) {
                 enforceMaxAlarmVolume(targetVolume)
                 delay(VOLUME_GUARD_INTERVAL_MS)
             }
         }.onFailure {
             AppLog.w("Play sound alarm failed: ${it.message}")
         }.also {
-            stop()
+            releasePlayer()
         }
     }
 
     fun stop() {
+        stopRequested = true
+        releasePlayer()
+    }
+
+    private fun releasePlayer() {
         runCatching {
             player?.stop()
             player?.release()

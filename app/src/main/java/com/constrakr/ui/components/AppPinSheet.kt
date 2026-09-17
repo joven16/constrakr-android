@@ -1,5 +1,6 @@
 package com.constrakr.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -15,6 +16,8 @@ fun AppPinSheet(
 ) {
     if (!visible) return
 
+    BackHandler(onBack = onDismiss)
+
     val appPin = ConsTrakrApp.instance.container.appPinSettings
 
     Dialog(
@@ -24,7 +27,6 @@ fun AppPinSheet(
         PasscodeKeypad(
             title = title,
             subtitle = subtitle,
-            onCancel = onDismiss,
             onSubmit = { pin ->
                 if (appPin.verifyAppPin(pin)) {
                     Result.success(Unit).also {

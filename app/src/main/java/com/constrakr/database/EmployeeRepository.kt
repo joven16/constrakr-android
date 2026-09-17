@@ -55,6 +55,27 @@ class EmployeeRepository(
         }
     }
 
+    suspend fun upsertEnrollmentPhotoFromRemote(
+        dto: com.constrakr.network.FaceEnrollmentPhotoDto,
+        employeeLocalId: String,
+        jpeg: ByteArray
+    ) {
+        val pose = dto.pose?.trim().orEmpty()
+        if (pose.isBlank()) return
+        val existing = enrollmentPhotoDao().forEmployee(employeeLocalId)
+            .firstOrNull { it.pose == pose }
+        val entity = FaceEnrollmentPhotoEntity(
+            localId = existing?.localId ?: dto.localId?.toString() ?: UUID.randomUUID().toString(),
+            serverId = dto.serverId ?: existing?.serverId,
+            employeeLocalId = employeeLocalId,
+            employeeServerId = dto.employeeServerId ?: existing?.employeeServerId,
+            pose = pose,
+            jpegData = jpeg,
+            syncStatus = SyncStatus.SYNCED.name.lowercase()
+        )
+        enrollmentPhotoDao().upsert(entity)
+    }
+
     suspend fun getAllEnrolled(): List<Employee> =
         dao.getAll().map { it.toDomain(secureStore) }.filter { it.isEnrolled }
 

@@ -1,6 +1,7 @@
 package com.constrakr
 
 import android.app.Application
+import org.osmdroid.config.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -29,6 +30,8 @@ class ConsTrakrApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        Configuration.getInstance().load(this, getSharedPreferences("osmdroid", MODE_PRIVATE))
+        Configuration.getInstance().userAgentValue = packageName
         com.constrakr.config.MatchThresholdSettings.init(this)
         adaFaceRecognizer = AdaFaceRecognizer(this)
         miniFasDetector = MiniFasLivenessDetector(this)

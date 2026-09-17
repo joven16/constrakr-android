@@ -38,6 +38,7 @@ import com.constrakr.face.JpegImageUtils
 fun EmployeePhotosPanel(
     profileJpeg: ByteArray?,
     posePhotos: Map<FacePose, ByteArray>,
+    showEnrollmentPoses: Boolean = posePhotos.isNotEmpty(),
     modifier: Modifier = Modifier
 ) {
     val profileBitmap = remember(profileJpeg) {
@@ -102,7 +103,7 @@ fun EmployeePhotosPanel(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
-        if (poseBitmaps.isNotEmpty()) {
+        if (showEnrollmentPoses) {
             ConsTrakrCard {
                 Text("Face scan poses", style = MaterialTheme.typography.titleSmall)
                 Text(

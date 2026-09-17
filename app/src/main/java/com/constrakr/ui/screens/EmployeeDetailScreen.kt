@@ -62,6 +62,7 @@ fun EmployeeDetailScreen(
             if (container.employeeRepository.getProfilePhoto(employeeId) == null) {
                 container.syncCoordinator.ensureLocalProfilePhoto(employeeId)
             }
+            container.syncCoordinator.ensureLocalEnrollmentPhotos(employeeId)
         }
         profileJpeg = withContext(Dispatchers.IO) {
             container.employeeRepository.getProfilePhoto(employeeId)
@@ -113,13 +114,6 @@ fun EmployeeDetailScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                },
-                actions = {
-                    if (employee != null && container.accessSession.canEditEmployee(employee!!)) {
-                        IconButton(onClick = { onEdit(employeeId) }) {
-                            Text("Edit")
-                        }
-                    }
                 }
             )
         }
@@ -136,7 +130,8 @@ fun EmployeeDetailScreen(
             val e = employee ?: return@Column
             EmployeePhotosPanel(
                 profileJpeg = profileJpeg,
-                posePhotos = posePhotos
+                posePhotos = posePhotos,
+                showEnrollmentPoses = e.isEnrolled || posePhotos.isNotEmpty()
             )
             ConsTrakrCard {
                 Text("Code: ${e.employeeCode}")
@@ -155,6 +150,14 @@ fun EmployeeDetailScreen(
             }
             adminGate.blockedMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            if (container.accessSession.canEditEmployee(e)) {
+                Button(
+                    onClick = { onEdit(employeeId) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Edit employee")
+                }
             }
             Button(
                 onClick = { adminGate.withAdmin { showDeleteConfirm = true } },

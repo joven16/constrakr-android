@@ -98,7 +98,13 @@ class AppContainer(context: Context) {
         syncCoordinator,
         deviceCommandService
     )
-    val adminCodeService = AdminCodeService(api, deviceStore, accessSession, syncCoordinator)
+    val adminCodeService = AdminCodeService(
+        api,
+        deviceStore,
+        accessSession,
+        syncCoordinator,
+        deviceFindAlarmPlayer
+    )
     val faceDetection = FaceDetectionService()
     val matchingService = FaceMatchingService()
     val verificationEngine = AttendanceVerificationEngine(matchingService)

@@ -23,7 +23,7 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Collects kiosk device telemetry. GPS fixes must be ≤30 m accuracy; no continuous GPS. */
+/** Collects kiosk device telemetry. GPS fixes must be ≤5 m accuracy; no continuous GPS. */
 class DeviceTrackingService(
     private val context: Context,
     private val deviceStore: DeviceStore,

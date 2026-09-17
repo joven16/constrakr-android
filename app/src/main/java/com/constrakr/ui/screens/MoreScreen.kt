@@ -20,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +35,7 @@ import com.constrakr.ui.components.ConsTrakrCard
 import com.constrakr.ui.components.SiteHeader
 import com.constrakr.ui.components.rememberAdminGate
 import com.constrakr.util.isUserCancellation
+import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -88,14 +88,14 @@ fun MoreScreen(
         ConsTrakrCard {
             RowItem(
                 title = if (isAdminUnlocked) "Admin unlocked" else "Unlock admin",
-                subtitle = session.unlockedOperatorName ?: "6-digit code · 15 min",
+                subtitle = if (isAdminUnlocked) session.unlockedOperatorName else null,
                 icon = if (isAdminUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
                 onClick = {
                     if (isAdminUnlocked) {
                         container.accessSession.lock()
                         message = "Admin locked"
                     } else {
-                        adminGate.withAdmin { message = "Admin unlocked for 15 minutes" }
+                        adminGate.withAdmin { message = "Admin unlocked" }
                     }
                 }
             )

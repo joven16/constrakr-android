@@ -48,6 +48,7 @@ fun EmployeeEditScreen(employeeId: UUID, onBack: () -> Unit, onSaved: () -> Unit
     var siteName by remember { mutableStateOf("") }
     var profileJpeg by remember { mutableStateOf<ByteArray?>(null) }
     var posePhotos by remember { mutableStateOf<Map<FacePose, ByteArray>>(emptyMap()) }
+    var isEnrolled by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
 
@@ -58,11 +59,13 @@ fun EmployeeEditScreen(employeeId: UUID, onBack: () -> Unit, onSaved: () -> Unit
             dept = e.department
             position = e.position
             siteName = e.assignedSiteName
+            isEnrolled = e.isEnrolled
         }
         withContext(Dispatchers.IO) {
             if (container.employeeRepository.getProfilePhoto(employeeId) == null) {
                 container.syncCoordinator.ensureLocalProfilePhoto(employeeId)
             }
+            container.syncCoordinator.ensureLocalEnrollmentPhotos(employeeId)
         }
         profileJpeg = withContext(Dispatchers.IO) {
             container.employeeRepository.getProfilePhoto(employeeId)
@@ -94,6 +97,7 @@ fun EmployeeEditScreen(employeeId: UUID, onBack: () -> Unit, onSaved: () -> Unit
             EmployeePhotosPanel(
                 profileJpeg = profileJpeg,
                 posePhotos = posePhotos,
+                showEnrollmentPoses = isEnrolled || posePhotos.isNotEmpty(),
                 modifier = Modifier.padding(bottom = 16.dp)
             )
             OutlinedTextField(

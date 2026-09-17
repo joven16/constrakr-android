@@ -3,7 +3,7 @@ package com.constrakr.device.tracking
 import android.location.Location
 
 /** Heartbeats only include GPS fixes at or below this accuracy (meters). */
-const val MAX_HEARTBEAT_GPS_ACCURACY_METERS = 30f
+const val MAX_HEARTBEAT_GPS_ACCURACY_METERS = 5f
 
 fun isHeartbeatLocationAcceptable(accuracyMeters: Float?): Boolean {
     if (accuracyMeters == null || accuracyMeters <= 0f) return false

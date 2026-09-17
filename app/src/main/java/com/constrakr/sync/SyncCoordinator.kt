@@ -18,9 +18,11 @@ import com.constrakr.network.ConsTrakrApi
 import com.constrakr.network.EmployeeUpsertRequest
 import com.constrakr.network.FaceEmbeddingPostRequest
 import com.constrakr.network.DeviceRegisterRequest
+import com.constrakr.network.JobSiteDto
 import com.constrakr.network.JobSitePostRequest
 import com.constrakr.admin.PendingEmployeeDeletionStore
 import com.constrakr.domain.Employee
+import com.constrakr.domain.FacePose
 import com.constrakr.util.AppLog
 import com.constrakr.util.appResultOf
 import kotlinx.coroutines.CancellationException
@@ -289,6 +291,9 @@ class SyncCoordinator(
             _status.value = "Downloading profile photos…"
             total += pullProfilePhotos(auth, localByServerId)
 
+            _status.value = "Downloading face scan photos…"
+            total += pullEnrollmentPhotos(auth, localByServerId)
+
             _status.value = "Uploading attendance…"
             total += uploadPendingAttendance(auth)
 
@@ -422,6 +427,32 @@ class SyncCoordinator(
         return count
     }
 
+    /** Restore enrollment pose photos from server when missing locally. */
+    suspend fun ensureLocalEnrollmentPhotos(employeeId: UUID): Boolean = withContext(Dispatchers.IO) {
+        val existing = employees.getEnrollmentPhotos(employeeId)
+        if (existing.size >= FacePose.enrollmentOrder.size) return@withContext true
+        val token = authToken ?: return@withContext false
+        val auth = ApiClient.authHeader(token) ?: return@withContext false
+        val employee = employees.getEntity(employeeId.toString()) ?: return@withContext false
+        val serverId = employee.serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return@withContext false
+        runCatching {
+            val rows = api.getFaceEnrollmentPhotos(
+                auth = auth,
+                deviceId = deviceLocalId,
+                includeMedia = "1",
+                employeeServerId = serverId
+            ).items
+            var saved = false
+            for (dto in rows) {
+                if (!dto.hasJpegData || dto.jpegBase64.isNullOrBlank() || dto.pose.isNullOrBlank()) continue
+                val jpeg = Base64.decode(dto.jpegBase64, Base64.NO_WRAP)
+                employees.upsertEnrollmentPhotoFromRemote(dto, employeeId.toString(), jpeg)
+                saved = true
+            }
+            saved
+        }.getOrDefault(false)
+    }
+
     /** Restore profile photo from server when local file is missing (e.g. after a prior sync deleted it). */
     suspend fun ensureLocalProfilePhoto(employeeId: UUID): Boolean = withContext(Dispatchers.IO) {
         if (ProfilePhotoStore.load(context, employeeId) != null) return@withContext true
@@ -441,6 +472,25 @@ class SyncCoordinator(
             ProfilePhotoStore.markSynced(context, employeeId)
             true
         }.getOrDefault(false)
+    }
+
+    private suspend fun pullEnrollmentPhotos(auth: String, localByServerId: Map<String, String>): Int {
+        val rows = api.getFaceEnrollmentPhotos(auth, deviceLocalId, includeMedia = "1").items
+        var count = 0
+        for (dto in rows) {
+            if (!dto.hasJpegData || dto.jpegBase64.isNullOrBlank() || dto.pose.isNullOrBlank()) continue
+            val localId = dto.employeeLocalId?.toString()
+                ?: dto.employeeServerId?.let { localByServerId[it] }
+                ?: continue
+            val pose = dto.pose.trim()
+            val already = employees.enrollmentPhotoDao().forEmployee(localId)
+                .any { it.pose == pose && it.syncStatus == SyncStatus.SYNCED.name.lowercase() }
+            if (already) continue
+            val jpeg = Base64.decode(dto.jpegBase64, Base64.NO_WRAP)
+            employees.upsertEnrollmentPhotoFromRemote(dto, localId, jpeg)
+            count++
+        }
+        return count
     }
 
     private suspend fun pullProfilePhotos(auth: String, localByServerId: Map<String, String>): Int {
@@ -548,10 +598,10 @@ class SyncCoordinator(
                 count++
             }
         }
-        for (id in jobSiteStore.pendingUploadIds) {
+        for (id in jobSiteStore.pendingUploadIds.toList()) {
             val site = jobSiteStore.site(id) ?: continue
             runCatching {
-                api.postJobSite(
+                val dto = api.postJobSite(
                     auth, deviceLocalId,
                     JobSitePostRequest(
                         id = site.id,
@@ -562,25 +612,31 @@ class SyncCoordinator(
                         radiusMeters = site.radiusMeters
                     )
                 )
+                jobSiteStore.upsert(jobSiteFromDto(dto), markPendingUpload = false)
                 jobSiteStore.clearPendingUpload(id)
                 count++
             }
         }
         val remote = api.getJobSites(auth, deviceLocalId).items
             .filter { it.deletedAt == null }
-            .map { dto ->
-                JobSite(
-                    id = dto.id,
-                    name = dto.name,
-                    locationLabel = dto.locationLabel ?: "",
-                    latitude = dto.latitude,
-                    longitude = dto.longitude,
-                    radiusMeters = JobSite.clampRadius(dto.radiusMeters),
-                    updatedAtMillis = System.currentTimeMillis()
-                )
-            }
+            .map(::jobSiteFromDto)
         jobSiteStore.applyRemoteCatalog(remote)
         return count
+    }
+
+    private fun jobSiteFromDto(dto: JobSiteDto): JobSite {
+        val updatedAt = dto.updatedAt?.let { iso ->
+            runCatching { Instant.parse(iso).toEpochMilli() }.getOrNull()
+        } ?: System.currentTimeMillis()
+        return JobSite(
+            id = dto.id,
+            name = dto.name,
+            locationLabel = dto.locationLabel ?: "",
+            latitude = dto.latitude,
+            longitude = dto.longitude,
+            radiusMeters = JobSite.clampRadius(dto.radiusMeters),
+            updatedAtMillis = updatedAt
+        )
     }
 
     private suspend fun uploadPendingAttendance(auth: String): Int {

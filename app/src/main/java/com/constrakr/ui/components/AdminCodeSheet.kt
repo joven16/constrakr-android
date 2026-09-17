@@ -1,8 +1,9 @@
 package com.constrakr.ui.components
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.runtime.Composable
 import com.constrakr.ConsTrakrApp
 
 @Composable
@@ -14,6 +15,8 @@ fun AdminCodeSheet(
     subtitle: String? = null
 ) {
     if (!visible) return
+
+    BackHandler(onBack = onDismiss)
 
     val container = ConsTrakrApp.instance.container
     val assignedName = container.deviceStore.assignedUserName
@@ -33,7 +36,6 @@ fun AdminCodeSheet(
         PasscodeKeypad(
             title = title,
             subtitle = resolvedSubtitle,
-            onCancel = onDismiss,
             onSubmit = { code ->
                 container.adminCodeService.verify(code).map { name ->
                     onVerified()

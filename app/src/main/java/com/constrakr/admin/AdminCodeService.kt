@@ -1,6 +1,7 @@
 package com.constrakr.admin
 
 import com.constrakr.config.ConsTrakrConstants
+import com.constrakr.device.DeviceFindAlarmPlayer
 import com.constrakr.domain.DeviceStore
 import com.constrakr.network.ApiClient
 import com.constrakr.network.ConsTrakrApi
@@ -15,7 +16,8 @@ class AdminCodeService(
     private val api: ConsTrakrApi,
     private val deviceStore: DeviceStore,
     private val accessSession: AppAccessSession,
-    private val syncCoordinator: SyncCoordinator
+    private val syncCoordinator: SyncCoordinator,
+    private val alarmPlayer: DeviceFindAlarmPlayer
 ) {
     sealed class AdminGateResult {
         data object Allowed : AdminGateResult()
@@ -77,6 +79,7 @@ class AdminCodeService(
             }
             val name = resp.assignedUserName ?: "Admin"
             deviceStore.assignedUserName = name
+            alarmPlayer.stop()
             accessSession.unlock(name)
             AppLog.d("Admin unlock OK for $name")
             Result.success(name)

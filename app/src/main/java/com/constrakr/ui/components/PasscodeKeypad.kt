@@ -25,7 +25,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,7 +46,6 @@ fun PasscodeKeypad(
     title: String,
     subtitle: String,
     digitCount: Int = ConsTrakrConstants.ADMIN_CODE_DIGITS,
-    onCancel: () -> Unit,
     onSubmit: suspend (String) -> Result<Unit>
 ) {
     val scope = rememberCoroutineScope()
@@ -91,15 +89,6 @@ fun PasscodeKeypad(
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.Start
-                ) {
-                    TextButton(onClick = onCancel, enabled = !verifying) {
-                        Text("Cancel")
-                    }
-                }
-
                 Spacer(Modifier.weight(1f))
 
                 Column(
